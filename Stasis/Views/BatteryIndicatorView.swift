@@ -9,6 +9,16 @@ struct BatteryIndicatorView: View {
 
     @State private var insidePercentageFrame: CGRect?
 
+    private var batteryText: String { String(batteryLevel) }
+
+    private var digitCount: CGFloat {
+        switch batteryLevel {
+            case 100...: return 3
+            case 10...99: return 2
+            default: return 1
+        }
+    }
+
     private var shouldShowInsidePercentage: Bool {
         percentageDisplayLocation == .insideIcon
     }
@@ -37,14 +47,14 @@ struct BatteryIndicatorView: View {
     }
 
     private enum Layout {
-        static let batteryHeight: CGFloat = 12
-        static let batteryWidth: CGFloat = 24
+        static let batteryHeight: CGFloat = 11
+        static let batteryWidth: CGFloat = 23
         static let insideBatteryHeight: CGFloat = 14
         static let insideBatteryWidth: CGFloat = 28
-        static let terminalWidth: CGFloat = 2
-        static let terminalHeight: CGFloat = 5
-        static let insideTerminalWidth: CGFloat = 2.5
-        static let insideTerminalHeight: CGFloat = 6
+        static let terminalWidth: CGFloat = 1.3
+        static let terminalHeight: CGFloat = 3.6
+        static let insideTerminalWidth: CGFloat = 2
+        static let insideTerminalHeight: CGFloat = 4
         static let cornerRadius: CGFloat = 3
         static let insideCornerRadius: CGFloat = 3.5
         static let strokeWidth: CGFloat = 1
@@ -70,13 +80,13 @@ struct BatteryIndicatorView: View {
                     BatteryTerminal(
                         width: Layout.insideTerminalWidth,
                         height: Layout.insideTerminalHeight,
-                        cornerRadius: 1.5
+                        cornerRadius: 1
                     )
                 } else {
                     BatteryTerminal(
                         width: Layout.terminalWidth,
                         height: Layout.terminalHeight,
-                        cornerRadius: 1.25
+                        cornerRadius: 1
                     )
                 }
             }
@@ -113,13 +123,12 @@ struct BatteryIndicatorView: View {
             Rectangle()
                 .fill(Layout.insideTrackColor)
 
-            GeometryReader { geo in
-                Rectangle()
-                    .fill(fillColor)
-                    .frame(width: fillWidth(usableWidth: geo.size.width))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .animation(Layout.levelAnimation, value: batteryLevel)
-            }
+            Rectangle()
+                .fill(fillColor)
+                .frame(width: fillWidth(usableWidth: Layout.insideBatteryWidth))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(Layout.levelAnimation, value: batteryLevel)
+
 
             insideContent
         }
@@ -136,7 +145,6 @@ struct BatteryIndicatorView: View {
         guard usesPassthrough, let textFrame = insidePercentageFrame else {
             return raw
         }
-        let digitCount = CGFloat(String(batteryLevel).count)
         let digitWidth = textFrame.width / digitCount
         let leftEdge = textFrame.minX
         let rawIndex = ((raw - leftEdge) / digitWidth).rounded()
@@ -147,7 +155,7 @@ struct BatteryIndicatorView: View {
 
     private var insideContent: some View {
         HStack(spacing: 1.5) {
-            Text(verbatim: "\(batteryLevel)")
+            Text(verbatim: batteryText)
                 .font(.system(size: 10, weight: .heavy))
                 .monospacedDigit()
                 .background {
@@ -173,8 +181,8 @@ struct BatteryIndicatorView: View {
         if chargingMode == .charging {
             Image(systemName: "bolt.fill")
         } else if chargingMode == .pluggedIn {
-            Image(systemName: "powerplug.fill")
-                .rotationEffect(.degrees(-90))
+            Image(systemName: "powerplug.portrait.fill")
+             
         }
     }
 
@@ -184,9 +192,8 @@ struct BatteryIndicatorView: View {
                 .stroke(lineWidth: Layout.strokeWidth)
                 .opacity(Layout.outlineOpacity)
 
-            GeometryReader { geo in
-                let fillWidth =
-                    (geo.size.width - Layout.fillInset * 2)
+               let fillWidth =
+                    (Layout.batteryWidth - Layout.fillInset * 2)
                     * CGFloat(batteryLevel)
                     / 100
                 RoundedRectangle(
@@ -197,19 +204,18 @@ struct BatteryIndicatorView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Layout.fillInset)
                 .animation(Layout.levelAnimation, value: batteryLevel)
-            }
+
         }
         .overlay {
             if chargingMode == .charging {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 10, weight: .black))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .shadow(color: .black.opacity(0.6), radius: 0.5)
             } else if chargingMode == .pluggedIn {
-                Image(systemName: "powerplug.fill")
+                Image(systemName: "powerplug.portrait.fill")
                     .font(.system(size: 10, weight: .black))
-                    .rotationEffect(.degrees(-90))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .shadow(color: .black.opacity(0.6), radius: 0.5)
             }
         }
@@ -223,7 +229,7 @@ private struct InsidePercentageFramePreferenceKey: PreferenceKey {
     }
 }
 
-struct BatteryTerminal: View {
+struct BatteryTerminal: View, Equatable {
     let width: CGFloat
     let height: CGFloat
     let cornerRadius: CGFloat
