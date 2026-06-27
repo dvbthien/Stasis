@@ -6,53 +6,76 @@ import SwiftUI
 class StatusBarManager {
     private let statusItem: NSStatusItem
     private let viewModel: MenuViewModel
+    
+    // Lưu lại các kết nối để tránh giải phóng bộ nhớ ngầm
+    private var locationObservation: Defaults.Observation?
+    private var showStateObservation: Defaults.Observation?
 
     init(viewModel: MenuViewModel) {
         self.viewModel = viewModel
-        statusItem = NSStatusBar.system.statusItem(
-            withLength: NSStatusItem.variableLength
-        )
-        setupPersistentHostingView()
+        self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        
+        // Cấu hình nút ban đầu
+        if let button = statusItem.button {
+            button.title = ""
+        }
+        
+        // Kích hoạt hệ thống lắng nghe tự động
+        setupDefaultsObservations()
+        startViewModelObservation()
     }
 
     func setMenu(_ menu: NSMenu) {
         statusItem.menu = menu
     }
 
-    private func setupPersistentHostingView() {
-        guard let button = statusItem.button else { return }
-
-        let rootView = StatusBarContentView(viewModel: viewModel)
-        let hosting = NSHostingView(rootView: rootView)
-
-        button.subviews.forEach { $0.removeFromSuperview() }
-        button.title = ""
-        button.image = nil
-
-        hosting.translatesAutoresizingMaskIntoConstraints = false
-        button.addSubview(hosting)
-        NSLayoutConstraint.activate([
-            hosting.topAnchor.constraint(equalTo: button.topAnchor, constant: 4),
-            hosting.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: -4),
-            hosting.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 7),
-            hosting.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -7),
-        ])
+    /// 1. Tự động lắng nghe thay đổi từ @Observable ViewModel
+    private func startViewModelObservation() {
+        withObservationTracking {
+            // Chỉ cần chạm vào các thuộc tính này, Swift sẽ biết cần phải theo dõi chúng
+            _ = viewModel.displayPercentage
+            _ = viewModel.chargingMode
+            _ = viewModel.isLowPowerModeEnabled
+        } onChange: { [weak self] in
+            // Khi có bất kỳ thuộc tính nào ở trên đổi số, hàm này lập tức được gọi
+            Task { @MainActor in
+                guard let self else { return }
+                self.updateStatusIcon()
+                self.startViewModelObservation() // Tiếp tục theo dõi vòng tiếp theo
+            }
+        }
     }
-}
 
-struct StatusBarContentView: View {
-    let viewModel: MenuViewModel
-    @Default(.batteryPercentageDisplayLocation) var percentageDisplayLocation
-    @Default(.showBatteryStateInStatusIcon) var showState
+    /// 2. Tự động lắng nghe thay đổi từ UserDefaults (Thư viện Defaults)
+    private func setupDefaultsObservations() {
+        locationObservation = Defaults.observe(.batteryPercentageDisplayLocation) { [weak self] _ in
+            self?.updateStatusIcon()
+        }
+        showStateObservation = Defaults.observe(.showBatteryStateInStatusIcon) { [weak self] _ in
+            self?.updateStatusIcon()
+        }
+    }
 
-    var body: some View {
-        BatteryIndicatorView(
-            batteryLevel: viewModel.displayPercentage,
+    /// 3. Hàm duy nhất chịu trách nhiệm render và gán ảnh trực tiếp
+    private func updateStatusIcon() {
+        guard let button = statusItem.button else { return }
+        
+        let percentageDisplayLocation = Defaults[.batteryPercentageDisplayLocation]
+        let showState = Defaults[.showBatteryStateInStatusIcon]
+
+        // Gọi trực tiếp bộ vẽ ra NSImage
+        let batteryImage = BatteryRenderer.render(
+            level: viewModel.displayPercentage,
             chargingMode: viewModel.chargingMode,
-            isLowPowerModeEnabled: viewModel.isLowPowerModeEnabled,
-            percentageDisplayLocation: percentageDisplayLocation,
+            isLowPower: viewModel.isLowPowerModeEnabled,
+            displayLocation: percentageDisplayLocation,
             showState: showState
         )
-        .fixedSize()
+
+        // Gán thẳng vào button của AppKit
+        button.image = batteryImage
+        button.imagePosition = (percentageDisplayLocation == .nextToIcon) ? .imageLeft : .imageOnly
     }
 }
+
+
