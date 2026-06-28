@@ -18,10 +18,8 @@ class ChargingHelperManager {
 
     private let service: SMAppService
     private var connection: NSXPCConnection?
-    private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis",
-        category: "ChargingHelperManager"
-    )
+
+    private let logger = Logger.stasis("ChargingHelperManager")
 
     private(set) var helperStatus: ChargingHelperStatus
 
@@ -100,6 +98,15 @@ class ChargingHelperManager {
             Task { @MainActor in
                 guard let self else { return }
                 self.logger.warning("Charging helper XPC connection interrupted")
+                // Explicitly invalidate before dropping our reference: the
+                // remote daemon process may still be alive after an
+                // interruption, but this specific connection object is done.
+                // Without this, the next getHelper() call creates a second
+                // connection to the same machServiceName while the daemon
+                // still holds onto the first one until it times out on its
+                // own — i.e. the same kind of connection buildup this whole
+                // fix is meant to eliminate.
+                self.connection?.invalidate()
                 self.connection = nil
             }
         }

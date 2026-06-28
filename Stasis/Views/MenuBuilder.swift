@@ -100,14 +100,7 @@ class MenuBuilder {
                 )
             )
         }
-        if Defaults[.showBatteryTemperature] {
-            items.append(
-                createInfoItem(
-                    label: String(localized: "Battery Temperature"),
-                    keyPath: \.batteryTemperatureText
-                )
-            )
-        }
+
 
         return items
     }
@@ -162,6 +155,14 @@ class MenuBuilder {
                 createInfoItem(
                     label: String(localized: "Battery Health"),
                     keyPath: \.batteryHealthText
+                )
+            )
+        }
+        if Defaults[.showBatteryTemperature] {
+            items.append(
+                createInfoItem(
+                    label: String(localized: "Battery Temperature"),
+                    keyPath: \.batteryTemperatureText
                 )
             )
         }

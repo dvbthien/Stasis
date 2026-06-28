@@ -5,10 +5,7 @@ import os.log
 class LaunchAtLoginService {
     static let shared = LaunchAtLoginService()
 
-    private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis",
-        category: "LaunchAtLoginService"
-    )
+    private let logger = Logger.stasis("LaunchAtLoginService")
 
     private init() {}
 
