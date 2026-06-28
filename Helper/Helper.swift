@@ -3,7 +3,7 @@ import os.log
 import smc_power
 
 private enum Constants {
-    static let helperSubsystem = "com.srimanachanta.stasis.helper"
+    static let helperSubsystem = "com.srimanachanta.stasis-monitor-helper"
 }
 
 final class Helper: NSObject, HelperProtocol {

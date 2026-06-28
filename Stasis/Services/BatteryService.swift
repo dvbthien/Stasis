@@ -47,7 +47,7 @@ class BatteryService {
     init() {
         logger.info("BatteryService initialized")
         smcPoller = SMCMetricsPoller(
-            serviceName: "com.srimanachanta.stasis.helper",
+            serviceName: "com.srimanachanta.stasis-monitor-helper",
             onReading: { [weak self] battery, adapter in
                 self?.handleSMCReading(battery, adapter)
             }
