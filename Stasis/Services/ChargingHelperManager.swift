@@ -13,8 +13,8 @@ enum ChargingHelperStatus {
 class ChargingHelperManager {
     static let shared = ChargingHelperManager()
 
-    private static let machServiceName = "com.srimanachanta.stasis.charging-helper"
-    private static let plistName = "com.srimanachanta.stasis.charging-helper.plist"
+    private static let machServiceName = "com.srimanachanta.stasis-daemon"
+    private static let plistName = "com.srimanachanta.stasis-daemon.plist"
 
     private let service: SMAppService
     private var connection: NSXPCConnection?

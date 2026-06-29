@@ -14,7 +14,7 @@
 		A68B3E292F19ABCB00F115E4 /* StasisMonitorHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A6AE19892F480D41003B09FA /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
 		A6AE198A2F480D41003B09FA /* smc_power.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		A6E6D7322F3A00000069CF9F /* charging-helper in Copy Helper Tools */ = {isa = PBXBuildFile; fileRef = A6E6D71E2F39DD350069CF9F /* charging-helper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A6E6D7322F3A00000069CF9F /* StasisDaemon in Copy Helper Tools */ = {isa = PBXBuildFile; fileRef = A6E6D71E2F39DD350069CF9F /* StasisDaemon */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -84,7 +84,7 @@
 			dstPath = "$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons";
 			dstSubfolderSpec = 16;
 			files = (
-				A6E6D7322F3A00000069CF9F /* charging-helper in Copy Helper Tools */,
+				A6E6D7322F3A00000069CF9F /* StasisDaemon in Copy Helper Tools */,
 			);
 			name = "Copy Helper Tools";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -96,7 +96,7 @@
 		A67470412FA4F4EA00925FF2 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		A68B3E0C2F19AB4B00F115E4 /* stasis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = stasis.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = StasisMonitorHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
-		A6E6D71E2F39DD350069CF9F /* charging-helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "charging-helper"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A6E6D71E2F39DD350069CF9F /* StasisDaemon */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = StasisDaemon; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -200,7 +200,7 @@
 			children = (
 				A68B3E0C2F19AB4B00F115E4 /* stasis.app */,
 				A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */,
-				A6E6D71E2F39DD350069CF9F /* charging-helper */,
+				A6E6D71E2F39DD350069CF9F /* StasisDaemon */,
 				A66D62CE2F44067C00B996E7 /* smc_power.framework */,
 			);
 			name = Products;
@@ -303,9 +303,9 @@
 			productReference = A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */;
 			productType = "com.apple.product-type.xpc-service";
 		};
-		A6E6D71D2F39DD350069CF9F /* stasis-charging-helper */ = {
+		A6E6D71D2F39DD350069CF9F /* stasis-daemon */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "stasis-charging-helper" */;
+			buildConfigurationList = A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "stasis-daemon" */;
 			buildPhases = (
 				A6E6D71A2F39DD350069CF9F /* Sources */,
 				A6E6D71B2F39DD350069CF9F /* Frameworks */,
@@ -318,11 +318,11 @@
 			fileSystemSynchronizedGroups = (
 				A6E6D71F2F39DD350069CF9F /* ChargingHelper */,
 			);
-			name = "stasis-charging-helper";
+			name = "stasis-daemon";
 			packageProductDependencies = (
 			);
 			productName = "charging-helper";
-			productReference = A6E6D71E2F39DD350069CF9F /* charging-helper */;
+			productReference = A6E6D71E2F39DD350069CF9F /* StasisDaemon */;
 			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
@@ -374,7 +374,7 @@
 			targets = (
 				A68B3E0B2F19AB4B00F115E4 /* stasis */,
 				A68B3E1D2F19ABCB00F115E4 /* StasisMonitorHelper */,
-				A6E6D71D2F39DD350069CF9F /* stasis-charging-helper */,
+				A6E6D71D2F39DD350069CF9F /* stasis-daemon */,
 				A66D62CD2F44067C00B996E7 /* smc-power */,
 			);
 		};
@@ -411,15 +411,15 @@
 			files = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/ChargingHelper/com.srimanachanta.stasis.charging-helper.plist",
+				"$(SRCROOT)/ChargingHelper/com.srimanachanta.stasis-daemon.plist",
 			);
 			name = "Copy LaunchDaemon Plist";
 			outputPaths = (
-				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/com.srimanachanta.stasis.charging-helper.plist",
+				"$(BUILT_PRODUCTS_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchDaemons/com.srimanachanta.stasis-daemon.plist",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "mkdir -p \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons\"\ncp \"${SRCROOT}/ChargingHelper/com.srimanachanta.stasis.charging-helper.plist\" \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons/\"\n";
+			shellScript = "mkdir -p \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons\"\ncp \"${SRCROOT}/ChargingHelper/com.srimanachanta.stasis-daemon.plist\" \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -477,7 +477,7 @@
 		};
 		A6E6D7312F3A00000069CF9F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A6E6D71D2F39DD350069CF9F /* stasis-charging-helper */;
+			target = A6E6D71D2F39DD350069CF9F /* stasis-daemon */;
 			targetProxy = A6E6D7302F3A00000069CF9F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -871,8 +871,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis.charging-helper";
-				PRODUCT_NAME = "charging-helper";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis-daemon";
+				PRODUCT_NAME = StasisDaemon;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -893,8 +893,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis.charging-helper";
-				PRODUCT_NAME = "charging-helper";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis-daemon";
+				PRODUCT_NAME = StasisDaemon;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -942,7 +942,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "stasis-charging-helper" */ = {
+		A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "stasis-daemon" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A6E6D7232F39DD350069CF9F /* Debug */,
