@@ -17,64 +17,53 @@ enum XPCError: LocalizedError {
     }
 }
 
+/// Coordinates battery/adapter metrics from two independent sources — IOKit
+/// (event-driven, owns the displayed battery %, health, temperature, etc.)
+/// and the SMC helper via `SMCMetricsPoller` (polled, owns
+/// voltage/current/power for the Sankey power diagram) — and merges them
+/// into the single `metrics`/`adapterMetrics` the rest of the app observes.
+///
+/// This class deliberately does NOT touch `SMCReaderConnection` or any XPC
+/// connection directly. All of that lifecycle — when to connect, when to
+/// disconnect, what counts as "still in use" — is owned entirely by
+/// `SMCMetricsPoller`. That used to be split across several methods here
+/// (`loadCapabilities`, `disableFastPolling`, `pollSMCOnce`), which is how a
+/// missed cleanup call site let the helper process stay alive for hours.
 @MainActor
 @Observable
 class BatteryService {
     var metrics = BatteryMetrics()
     var adapterMetrics = AdapterMetrics()
     private(set) var controlState = BatteryControlState()
-    private(set) var deviceCapabilities = DeviceCapabilities(
-        chargingControl: false,
-        adapterControl: false,
-        hasMagSafe: false,
-        magsafeLEDControl: false
-    )
+    private(set) var deviceCapabilities = DeviceCapabilities.unknown
 
-    private let xpcManager = SMCReaderConnection(
-        serviceName: "com.srimanachanta.stasis.helper"
-    )
     private let ioKitService = IOKitService()
+    private var smcPoller: SMCMetricsPoller!
 
     private var ioKitMonitorTask: Task<Void, Never>?
-    private var smcPollTask: Task<Void, Never>?
-    private var delayedPollTask: Task<Void, Never>?
 
-    private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis",
-        category: "BatteryService"
-    )
+    private let logger = Logger.stasis("BatteryService")
 
     init() {
         logger.info("BatteryService initialized")
-        xpcManager.connect()
+        smcPoller = SMCMetricsPoller(
+            serviceName: "com.srimanachanta.stasis-monitor-helper",
+            onReading: { [weak self] battery, adapter in
+                self?.handleSMCReading(battery, adapter)
+            }
+        )
+        // The XPC connection to the SMC helper is created lazily by
+        // SMCMetricsPoller on first use, not eagerly here. The helper is an
+        // on-demand XPC Service: holding a connection open for the app's
+        // entire lifetime would keep that process alive continuously, even
+        // when nothing is polling it.
         startIOKitMonitoring()
     }
 
     func loadCapabilities() async {
-        let logger = self.logger
-        guard
-            let helper = xpcManager.getHelper(errorHandler: { error in
-                logger.error(
-                    "XPC error loading capabilities: \(error.localizedDescription)")
-            })
-        else {
-            logger.warning("Helper unavailable for capability probe")
+        guard let capabilities = await smcPoller.loadCapabilities() else {
             return
         }
-
-        let capabilities: DeviceCapabilities = await withCheckedContinuation { continuation in
-            helper.getCapabilities { chargingControl, adapterControl, hasMagSafe, magsafeLEDControl in
-                continuation.resume(
-                    returning: DeviceCapabilities(
-                        chargingControl: chargingControl,
-                        adapterControl: adapterControl,
-                        hasMagSafe: hasMagSafe,
-                        magsafeLEDControl: magsafeLEDControl
-                    )
-                )
-            }
-        }
-
         self.deviceCapabilities = capabilities
         logger.info(
             "Capabilities loaded: charging=\(capabilities.chargingControl), adapter=\(capabilities.adapterControl), magSafe=\(capabilities.hasMagSafe)"
@@ -92,102 +81,18 @@ class BatteryService {
     }
 
     func enableFastPolling() {
-        guard smcPollTask == nil else {
-            logger.warning("Fast polling already enabled")
-            return
-        }
-
-        logger.info("Enabling fast SMC polling")
-
-        smcPollTask = Task {
-            await self.pollSMCOnce()
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { break }
-                await self.pollSMCOnce()
-            }
-        }
-    }
-
-    func scheduleSinglePoll(delay: Duration = .seconds(3)) {
-        delayedPollTask?.cancel()
-        delayedPollTask = Task {
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            await self.pollSMCOnce()
-        }
+        smcPoller.start()
     }
 
     func disableFastPolling() {
-        guard smcPollTask != nil else {
-            logger.warning("Fast polling not enabled")
-            return
-        }
-
-        logger.info("Disabling fast SMC polling")
-        smcPollTask?.cancel()
-        smcPollTask = nil
+        smcPoller.stop()
     }
 
-    private func fetchSMCBatteryData() async -> SMCBatteryReading? {
-        let logger = self.logger
-        guard
-            let helper = xpcManager.getHelper(errorHandler: { error in
-                logger.error(
-                    "XPC error during SMC battery poll: \(error.localizedDescription)"
-                )
-            })
-        else {
-            return nil
-        }
-
-        return await withCheckedContinuation { continuation in
-            helper.readBatteryMetrics { batteryVoltage, batteryCurrent, batteryPower in
-                continuation.resume(
-                    returning: SMCBatteryReading(
-                        batteryVoltage: batteryVoltage,
-                        batteryCurrent: batteryCurrent,
-                        batteryPower: batteryPower
-                    )
-                )
-            }
-        }
+    func scheduleSinglePoll(delay: Duration = .seconds(3)) {
+        smcPoller.scheduleSinglePoll(delay: delay)
     }
 
-    private func fetchSMCAdapterData() async -> SMCAdapterReading? {
-        let logger = self.logger
-        guard
-            let helper = xpcManager.getHelper(errorHandler: { error in
-                logger.error(
-                    "XPC error during SMC adapter poll: \(error.localizedDescription)"
-                )
-            })
-        else {
-            return nil
-        }
-
-        return await withCheckedContinuation { continuation in
-            helper.readAdapterMetrics { adapterVoltage, adapterCurrent, adapterPower in
-                continuation.resume(
-                    returning: SMCAdapterReading(
-                        adapterVoltage: adapterVoltage,
-                        adapterCurrent: adapterCurrent,
-                        adapterPower: adapterPower
-                    )
-                )
-            }
-        }
-    }
-
-    private func pollSMCOnce() async {
-        async let batteryData = fetchSMCBatteryData()
-        async let adapterData = fetchSMCAdapterData()
-
-        guard let batteryReading = await batteryData, let adapterReading = await adapterData else {
-            logger.error("No helper available for SMC battery polling")
-            return
-        }
-
+    private func handleSMCReading(_ batteryReading: SMCBatteryReading, _ adapterReading: SMCAdapterReading) {
         var updatedBattery = metrics
         updatedBattery.batteryVoltage = batteryReading.batteryVoltage
         updatedBattery.batteryCurrent = batteryReading.batteryCurrent
@@ -307,10 +212,6 @@ class BatteryService {
         logger.info("BatteryService stopping")
         ioKitMonitorTask?.cancel()
         ioKitMonitorTask = nil
-        smcPollTask?.cancel()
-        smcPollTask = nil
-        delayedPollTask?.cancel()
-        delayedPollTask = nil
-        xpcManager.disconnect()
+        smcPoller.shutdown()
     }
 }

@@ -22,11 +22,8 @@ class ChargeManager {
     private(set) var chargeLimitOverrideActive = false
     private(set) var forceDischargeActive = false
     private var sleepAssertionID: IOPMAssertionID = IOPMAssertionID(kIOPMNullAssertionID)
-
-    private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis",
-        category: "ChargeManager"
-    )
+    
+    private let logger = Logger.stasis("ChargeManager")
 
     init(batteryService: BatteryService) {
         self.batteryService = batteryService

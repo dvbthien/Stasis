@@ -12,17 +12,21 @@ class IOKitService {
 
     private var continuation: AsyncStream<(BatteryMetrics, AdapterMetrics)>.Continuation?
 
-    private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis",
-        category: "IOKitService"
-    )
+    private let logger = Logger.stasis("IOKitService")
 
     func metricsStream() -> AsyncStream<(BatteryMetrics, AdapterMetrics)> {
-        AsyncStream { continuation in
+// Tránh capture mạnh `self` bằng cách xử lý tách biệt cấu trúc
+        AsyncStream { [weak self] continuation in
+            guard let self else {
+                continuation.finish()
+                return
+            }
+            
             self.continuation = continuation
 
             continuation.onTermination = { [weak self] _ in
-                MainActor.assumeIsolated {
+                // Chạy trên MainActor an toàn mà không làm rò rỉ instance
+                Task { @MainActor in
                     self?.stop()
                 }
             }
@@ -103,8 +107,9 @@ class IOKitService {
     }
 
     private func emitMetrics() {
+        guard continuation != nil else { return }
         logger.debug("IOKit notification triggered")
-
+        
         let powerInfo = getPowerSourceInfo() as? [String: Any]
         var batteryMetrics = BatteryMetrics()
         var adapterMetrics = AdapterMetrics()
