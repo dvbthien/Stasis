@@ -267,6 +267,9 @@
         }
       }
     },
+    "Battery & Power Adapter" : {
+
+    },
     "Battery Health" : {
       "localizations" : {
         "de" : {
@@ -526,6 +529,9 @@
           }
         }
       }
+    },
+    "Calculating..." : {
+
     },
     "Charge limit" : {
       "localizations" : {
@@ -1197,6 +1203,9 @@
         }
       }
     },
+    "Discharging" : {
+
+    },
     "Display battery percentage next to or inside the menu bar icon." : {
       "localizations" : {
         "vi" : {
@@ -1857,6 +1866,9 @@
         }
       }
     },
+    "Not Charging" : {
+
+    },
     "Notifications" : {
       "localizations" : {
         "de" : {
@@ -2057,6 +2069,9 @@
         }
       }
     },
+    "Plugged In (Not Charging)" : {
+
+    },
     "Power" : {
       "localizations" : {
         "de" : {
@@ -2096,6 +2111,9 @@
           }
         }
       }
+    },
+    "Power Adapter" : {
+
     },
     "Power distribution diagram" : {
       "localizations" : {
@@ -2612,6 +2630,9 @@
           }
         }
       }
+    },
+    "Unknown" : {
+
     },
     "Uptime" : {
       "localizations" : {

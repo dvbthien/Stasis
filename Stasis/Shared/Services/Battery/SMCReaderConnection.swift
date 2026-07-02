@@ -56,7 +56,7 @@ final class SMCReaderConnection {
 
         newConnection.invalidationHandler = { [weak self] in
             Task { @MainActor in
-                self?.logger.error("XPC connection invalidated")
+                self?.logger.info("XPC connection invalidated")
                 self?.connection = nil
             }
         }

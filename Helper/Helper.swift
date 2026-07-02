@@ -12,24 +12,6 @@ final class Helper: NSObject, HelperProtocol {
         category: "Helper"
     )
 
-    func readBatteryMetrics(
-        reply: @escaping @Sendable (Double, Double, Double) -> Void
-    ) {
-        autoreleasepool {
-            let (voltage, current, power) = readBatteryMetricsSync()
-            reply(voltage, current, power)
-        }
-    }
-
-    func readAdapterMetrics(
-        reply: @escaping @Sendable (Double, Double, Double) -> Void
-    ) {
-        autoreleasepool {
-            let (voltage, current, power) = readAdapterMetricsSync()
-            reply(voltage, current, power)
-        }
-    }
-
     func readAllMetrics(
         reply: @escaping @Sendable (Double, Double, Double, Double, Double, Double) -> Void
     ) {

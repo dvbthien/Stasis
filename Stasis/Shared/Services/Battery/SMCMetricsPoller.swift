@@ -16,7 +16,7 @@ import smc_power
 /// using this connection?", so it can't drift out of sync.
 ///
 /// `BatteryService` only ever calls `start()`, `stop()`, `scheduleSinglePoll()`,
-/// and reads `isPolling` — it has no direct access to the underlying
+/// `loadCapabilities()`, and `shutdown()` — it has no direct access to the underlying
 /// `SMCReaderConnection` at all.
 @MainActor
 final class SMCMetricsPoller {
@@ -33,8 +33,7 @@ final class SMCMetricsPoller {
     private var continuousPollTask: Task<Void, Never>?
     private var oneShotPollTask: Task<Void, Never>?
 
-    /// Whether continuous (fast) polling is currently running.
-    var isPolling: Bool { continuousPollTask != nil }
+    private var isPolling: Bool { continuousPollTask != nil }
 
     /// - Parameters:
     ///   - serviceName: mach service name of the read-only SMC helper.
@@ -65,9 +64,7 @@ final class SMCMetricsPoller {
         }
     }
 
-    /// Stops continuous polling and closes the XPC connection, since nothing
-    /// is left waiting on it. If a `scheduleSinglePoll` call comes in later,
-    /// the connection is transparently re-opened on demand.
+    /// Stops continuous polling and closes the XPC connection.
     func stop() {
         guard continuousPollTask != nil else {
             logger.warning("Fast polling not enabled")
@@ -80,9 +77,8 @@ final class SMCMetricsPoller {
         xpcManager.disconnect()
     }
 
-    /// Schedules a single poll after `delay`, replacing any pending one-off
-    /// poll. Used after issuing a charging command, to refresh metrics once
-    /// the change has had time to take effect.
+    /// Schedules one delayed refresh after a charging command so UI state can
+    /// catch the resulting power-flow change without keeping fast polling on.
     func scheduleSinglePoll(delay: Duration = .seconds(3)) {
         oneShotPollTask?.cancel()
         oneShotPollTask = Task {
@@ -93,8 +89,7 @@ final class SMCMetricsPoller {
     }
 
     /// Probes device capabilities once. Closes the connection afterwards
-    /// since this is a one-shot call with nothing else waiting on it (mirrors
-    /// the cleanup `pollOnce()` does for `scheduleSinglePoll`).
+    /// since this is a one-shot call with nothing else waiting on it.
     func loadCapabilities() async -> DeviceCapabilities? {
         guard let helper = getHelper(context: "loading capabilities") else { return nil }
 
@@ -149,9 +144,6 @@ final class SMCMetricsPoller {
 
         onReading(reading.0, reading.1)
 
-        // If this was a one-off poll and continuous polling isn't running,
-        // nothing is left waiting on the connection — close it so the
-        // on-demand helper process can exit instead of idling.
         if !isPolling {
             xpcManager.disconnect()
         }

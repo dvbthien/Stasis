@@ -3,20 +3,6 @@ import Observation
 import os.log
 import smc_power
 
-enum XPCError: LocalizedError {
-    case helperUnavailable
-    case commandFailed(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .helperUnavailable:
-            "XPC helper is unavailable"
-        case .commandFailed(let message):
-            "Command failed: \(message)"
-        }
-    }
-}
-
 /// Coordinates battery/adapter metrics from two independent sources — IOKit
 /// (event-driven, owns the displayed battery %, health, temperature, etc.)
 /// and the SMC helper via `SMCMetricsPoller` (polled, owns
@@ -27,8 +13,8 @@ enum XPCError: LocalizedError {
 /// connection directly. All of that lifecycle — when to connect, when to
 /// disconnect, what counts as "still in use" — is owned entirely by
 /// `SMCMetricsPoller`. That used to be split across several methods here
-/// (`loadCapabilities`, `disableFastPolling`, `pollSMCOnce`), which is how a
-/// missed cleanup call site let the helper process stay alive for hours.
+/// (`loadCapabilities`, `disableFastPolling`), which is how a missed cleanup
+/// call site let the helper process stay alive for hours.
 @MainActor
 @Observable
 class BatteryService {
@@ -199,7 +185,7 @@ class BatteryService {
     private func getChargingHelper() throws -> ChargingHelperProtocol {
         let logger = self.logger
         guard
-            let helper = ChargingHelperManager.shared.getHelper(errorHandler: { error in
+            let helper = ChargingDaemonManager.shared.getHelper(errorHandler: { error in
                 logger.error("Charging helper XPC error: \(error.localizedDescription)")
             })
         else {

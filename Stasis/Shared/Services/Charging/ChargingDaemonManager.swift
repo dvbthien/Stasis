@@ -2,16 +2,10 @@ import Foundation
 import ServiceManagement
 import os.log
 
-enum ChargingHelperStatus {
-    case notInstalled
-    case requiresApproval
-    case installed
-}
-
 @MainActor
 @Observable
-class ChargingHelperManager {
-    static let shared = ChargingHelperManager()
+class ChargingDaemonManager {
+    static let shared = ChargingDaemonManager()
 
     private static let machServiceName = "com.srimanachanta.stasis-daemon"
     private static let plistName = "com.srimanachanta.stasis-daemon.plist"
@@ -19,7 +13,7 @@ class ChargingHelperManager {
     private let service: SMAppService
     private var connection: NSXPCConnection?
 
-    private let logger = Logger.stasis("ChargingHelperManager")
+    private let logger = Logger.stasis("ChargingDaemonManager")
 
     private(set) var helperStatus: ChargingHelperStatus
 

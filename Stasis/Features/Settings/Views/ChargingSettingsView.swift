@@ -14,7 +14,7 @@ struct ChargingSettingsView: View {
     @Default(.heatProtectionLimit) var heatProtectionLimit
     @Default(.manageMagSafeLED) var manageMagSafeLED
     @Default(.heatProtectionMagSafeLEDState) var heatProtectionMagSafeLEDState
-    @State private var helperManager = ChargingHelperManager.shared
+    @State private var helperManager = ChargingDaemonManager.shared
     @State private var installError: String?
 
     private let capabilities: DeviceCapabilities
