@@ -88,7 +88,6 @@ class StatusBarManager {
 
     private func renderStatusIcon(_ state: StatusIconState) {
         guard let button = statusItem.button else { return }
-        print("update icon")
         let batteryImage = BatteryRenderer.render(
             level: state.level,
             chargingMode: state.chargingMode,
