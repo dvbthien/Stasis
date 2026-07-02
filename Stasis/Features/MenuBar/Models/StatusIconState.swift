@@ -20,27 +20,10 @@ struct StatusIconState: Equatable {
             ? metrics.hardwareBatteryPercentage
             : metrics.batteryPercentage
 
-        let powerSource = Self.derivePowerSource(battery: metrics, adapter: adapter)
-        if powerSource == .acAdapter {
-            chargingMode = metrics.isCharging ? .charging : .pluggedIn
-        } else {
-            chargingMode = .discharging
-        }
+        chargingMode = BatteryDisplayState.derive(metrics: metrics, adapter: adapter).chargingMode
 
         self.isLowPower = isLowPower
         self.displayLocation = displayLocation
         self.showState = showState
-    }
-
-    private static func derivePowerSource(battery: BatteryMetrics, adapter: AdapterMetrics) -> PowerSource {
-        guard adapter.adapterConnected else { return .battery }
-
-        if adapter.adapterPower == 0 {
-            return .battery
-        } else if battery.batteryPower >= 0 {
-            return .acAdapter
-        } else {
-            return .both
-        }
     }
 }

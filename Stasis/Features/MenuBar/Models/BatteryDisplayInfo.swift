@@ -39,9 +39,11 @@ struct BatteryDisplayInfo {
         displayPercentage = useHardwarePercentage ? metrics.hardwareBatteryPercentage : metrics.batteryPercentage
         percentageText = "\(displayPercentage)%"
 
-        let derivedPowerSource = Self.derivePowerSource(battery: metrics, adapter: adapter)
-        powerSource = derivedPowerSource
-        switch derivedPowerSource {
+        let displayState = BatteryDisplayState.derive(metrics: metrics, adapter: adapter)
+        powerSource = displayState.powerSource
+        chargingMode = displayState.chargingMode
+
+        switch displayState.powerSource {
         case .battery:
             powerSourceText = String(localized: "Battery")
         case .acAdapter:
@@ -53,22 +55,18 @@ struct BatteryDisplayInfo {
         let formattedTime = Self.formatTimeRemaining(minutes: metrics.timeRemaining)
         if !formattedTime.isEmpty {
             timeRemainingText = formattedTime
-        } else if derivedPowerSource == .acAdapter && !metrics.isCharging {
+        } else if displayState.powerSource == .acAdapter && !metrics.isCharging {
             timeRemainingText = String(localized: "Not Charging")
         } else {
             timeRemainingText = String(localized: "Calculating...")
         }
 
-        if derivedPowerSource == .acAdapter {
-            if metrics.isCharging {
-                chargingMode = .charging
+        switch displayState.chargingMode {
+        case .charging:
                 batteryModeText = String(localized: "Charging")
-            } else {
-                chargingMode = .pluggedIn
+        case .pluggedIn:
                 batteryModeText = String(localized: "Plugged In (Not Charging)")
-            }
-        } else {
-            chargingMode = .discharging
+        case .discharging:
             batteryModeText = String(localized: "Discharging")
         }
 
@@ -90,18 +88,6 @@ struct BatteryDisplayInfo {
         batteryPower = metrics.batteryPower
         adapterPower = adapter.adapterPower
         systemPower = adapter.adapterPower - metrics.batteryPower
-    }
-
-    private static func derivePowerSource(battery: BatteryMetrics, adapter: AdapterMetrics) -> PowerSource {
-        guard adapter.adapterConnected else { return .battery }
-
-        if adapter.adapterPower == 0 {
-            return .battery
-        } else if battery.batteryPower >= 0 {
-            return .acAdapter
-        } else {
-            return .both
-        }
     }
 
     private static func formatTimeRemaining(minutes: Int) -> String {
