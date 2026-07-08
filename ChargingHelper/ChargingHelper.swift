@@ -23,6 +23,11 @@ final class ChargingHelper: NSObject, ChargingHelperProtocol {
         )
     }
 
+    func checkHealth(reply: @escaping @Sendable (Bool, String?) -> Void) {
+        // Lightweight health check used before enabling UI state in the app.
+        reply(true, nil)
+    }
+
     func manageBatteryCharging(enabled: Bool, reply: @escaping @Sendable (Bool, String?) -> Void) {
         do {
             guard battery.capabilities.inhibitChargeControl else {

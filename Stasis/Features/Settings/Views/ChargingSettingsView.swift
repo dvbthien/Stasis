@@ -1,6 +1,5 @@
 import Defaults
 import SwiftUI
-import os.log
 import smc_power
 
 struct ChargingSettingsView: View {
@@ -15,17 +14,22 @@ struct ChargingSettingsView: View {
     @Default(.manageMagSafeLED) var manageMagSafeLED
     @Default(.heatProtectionMagSafeLEDState) var heatProtectionMagSafeLEDState
     @State private var helperManager = ChargingDaemonManager.shared
-    @State private var installError: String?
+    @State private var chargingController = ChargingManagementController()
 
     private let capabilities: DeviceCapabilities
-
-    private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis",
-        category: "ChargingSettingsView"
-    )
+    private let previewState: ChargingSettingsPreviewState?
 
     init(capabilities: DeviceCapabilities) {
         self.capabilities = capabilities
+        self.previewState = nil
+    }
+
+    fileprivate init(
+        capabilities: DeviceCapabilities,
+        previewState: ChargingSettingsPreviewState
+    ) {
+        self.capabilities = capabilities
+        self.previewState = previewState
     }
 
     private var hasChargingControl: Bool {
@@ -48,33 +52,156 @@ struct ChargingSettingsView: View {
         chargeLimit - sailingModeLimit
     }
 
+    private var helperStatus: ChargingHelperStatus {
+        previewState?.helperStatus ?? helperManager.helperStatus
+    }
+
+    private var connectionStatus: ChargingDaemonConnectionStatus {
+        previewState?.connectionStatus ?? helperManager.connectionStatus
+    }
+
+    private var isManageChargingOn: Bool {
+        guard hasAnyControl else { return false }
+        return previewState?.manageCharging ?? manageCharging
+    }
+
+    private var automaticDischargeBinding: Binding<Bool> {
+        Binding(
+            get: { hasAdapterControl && automaticDischarge },
+            set: { automaticDischarge = hasAdapterControl ? $0 : false }
+        )
+    }
+
+    private var sailingModeBinding: Binding<Bool> {
+        Binding(
+            get: { hasChargingControl && sailingMode },
+            set: { sailingMode = hasChargingControl ? $0 : false }
+        )
+    }
+
+    private var heatProtectionModeBinding: Binding<Bool> {
+        Binding(
+            get: { hasChargingControl && enableHeatProtectionMode },
+            set: { enableHeatProtectionMode = hasChargingControl ? $0 : false }
+        )
+    }
+
+    private var magSafeLEDBinding: Binding<Bool> {
+        Binding(
+            get: { capabilities.magsafeLEDControl && manageMagSafeLED },
+            set: { manageMagSafeLED = capabilities.magsafeLEDControl ? $0 : false }
+        )
+    }
+
+    private var isCheckingChargingDaemon: Bool {
+        previewState?.isVerifying ?? chargingController.flowState.isLoading
+    }
+
+    private var displayedChargingControlError: String? {
+        previewState?.errorMessage ?? chargingController.flowState.message
+    }
+
+    private var setupStatusMessage: String? {
+        isCheckingChargingDaemon ? displayedChargingControlError : nil
+    }
+
+    private var displayedStatusMessage: String? {
+        setupStatusMessage ?? displayedChargingControlError
+    }
+
+    private var shouldShowChargingControlError: Bool {
+        guard displayedStatusMessage != nil else { return false }
+        if helperStatus == .requiresApproval { return false }
+        return true
+    }
+
+    private var shouldShowApprovalPrompt: Bool {
+        guard helperStatus == .requiresApproval else { return false }
+        if previewState != nil { return true }
+        return chargingController.flowState.showsApprovalPrompt
+    }
+
+    private var isChargingDaemonReady: Bool {
+        helperStatus == .installed
+            && connectionStatus == .connected
+            && !isCheckingChargingDaemon
+    }
+
+    private var shouldShowChargingControls: Bool {
+        // Hide all dependent settings until the helper is installed, approved,
+        // connected, and the persisted manage-charging flag is actually on.
+        isManageChargingOn && isChargingDaemonReady
+    }
+
     var body: some View {
         Form {
             Section {
                 Toggle(
                     "Manage charging",
                     isOn: Binding(
-                        get: { manageCharging },
+                        get: { isManageChargingOn },
                         set: { newValue in
+                            guard previewState == nil else { return }
                             toggleManageCharging(newValue)
                         }
                     )
                 )
-                .disabled(!hasAnyControl || helperManager.helperStatus == .requiresApproval)
+                .disabled(!hasAnyControl || isCheckingChargingDaemon)
 
-                if helperManager.helperStatus == .requiresApproval {
+                if !hasAnyControl {
+                    UnsupportedCapabilityMessage(
+                        title: Text("Charge management is unavailable on this Mac."),
+                        message: Text("Stasis can still monitor battery status, but this hardware does not expose charging or adapter controls.")
+                    )
+                }
+
+                if shouldShowApprovalPrompt {
                     LabeledContent {
-                        Button("Check Again") {
-                            checkApprovalStatus()
+                        HStack(spacing: 8) {
+                            Button("Open Login Items", systemImage: "gear") {
+                                guard previewState == nil else { return }
+                                openApprovalSettings()
+                            }
+
+                            Button("Check Again", systemImage: "arrow.clockwise") {
+                                guard previewState == nil else { return }
+                                checkApprovalStatus()
+                            }
                         }
+                        .padding(.top, 4)
                     } label: {
-                        Text("Approve Stasis in System Settings \u{2192} Login Items to continue.")
+                        Text("Approve Stasis in Login Items to enable charge management.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                if manageCharging {
+                if let displayedStatusMessage, shouldShowChargingControlError {
+                    ChargingDaemonStatusRow(
+                        message: displayedStatusMessage,
+                        isLoading: isCheckingChargingDaemon,
+                        helperStatus: helperStatus,
+                        connectionStatus: connectionStatus,
+                        install: {
+                            guard previewState == nil else { return }
+                            requestEnableChargingManagement()
+                        },
+                        openApprovalSettings: {
+                            guard previewState == nil else { return }
+                            openApprovalSettings()
+                        },
+                        retry: {
+                            guard previewState == nil else { return }
+                            requestEnableChargingManagement()
+                        },
+                        reconnect: {
+                            guard previewState == nil else { return }
+                            reconnectChargingDaemon()
+                        }
+                    )
+                }
+
+                if shouldShowChargingControls {
                     LabeledContent {
                         HStack(spacing: 8) {
                             Slider(
@@ -99,16 +226,19 @@ struct ChargingSettingsView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-            } footer: {
-                if !hasAnyControl {
-                    Text("Charge management is not supported on this device.")
-                }
             }
 
-            if manageCharging {
+            if shouldShowChargingControls {
                 Section {
-                    Toggle("Automatic discharge", isOn: $automaticDischarge)
+                    Toggle("Automatic discharge", isOn: automaticDischargeBinding)
                         .disabled(!hasAdapterControl)
+
+                    if !hasAdapterControl {
+                        UnsupportedCapabilityMessage(
+                            title: Text("Adapter control is not supported on this device."),
+                            message: Text("Automatic discharge requires adapter control support from this Mac.")
+                        )
+                    }
                 } header: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Discharge")
@@ -117,10 +247,6 @@ struct ChargingSettingsView: View {
                         )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    }
-                } footer: {
-                    if !hasAdapterControl {
-                        Text("Adapter control is not supported on this device.")
                     }
                 }
 
@@ -138,10 +264,17 @@ struct ChargingSettingsView: View {
                 }
 
                 Section {
-                    Toggle("Enable sailing mode", isOn: $sailingMode)
+                    Toggle("Enable sailing mode", isOn: sailingModeBinding)
                         .disabled(!hasChargingControl)
 
-                    if sailingMode {
+                    if !hasChargingControl {
+                        UnsupportedCapabilityMessage(
+                            title: Text("Charging control is not supported on this device."),
+                            message: Text("Sailing mode requires charging control support from this Mac.")
+                        )
+                    }
+
+                    if hasChargingControl && sailingMode {
                         LabeledContent {
                             HStack(spacing: 8) {
                                 Slider(
@@ -174,17 +307,20 @@ struct ChargingSettingsView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     }
-                } footer: {
-                    if !hasChargingControl {
-                        Text("Charging control is not supported on this device.")
-                    }
                 }
 
                 Section {
-                    Toggle("Enable heat protection", isOn: $enableHeatProtectionMode)
+                    Toggle("Enable heat protection", isOn: heatProtectionModeBinding)
                         .disabled(!hasChargingControl)
 
-                    if enableHeatProtectionMode {
+                    if !hasChargingControl {
+                        UnsupportedCapabilityMessage(
+                            title: Text("Charging control is not supported on this device."),
+                            message: Text("Heat protection requires charging control support from this Mac.")
+                        )
+                    }
+
+                    if hasChargingControl && enableHeatProtectionMode {
                         LabeledContent {
                             HStack(spacing: 8) {
                                 Slider(
@@ -209,19 +345,22 @@ struct ChargingSettingsView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                } footer: {
-                    if !hasChargingControl {
-                        Text("Charging control is not supported on this device.")
-                    }
                 }
 
                 if hasMagSafe {
                     Section {
-                        Toggle("Manage MagSafe LED", isOn: $manageMagSafeLED)
+                        Toggle("Manage MagSafe LED", isOn: magSafeLEDBinding)
                             .disabled(!capabilities.magsafeLEDControl)
 
-                        if manageMagSafeLED {
-                            if enableHeatProtectionMode {
+                        if !capabilities.magsafeLEDControl {
+                            UnsupportedCapabilityMessage(
+                                title: Text("MagSafe LED control is not supported on this device."),
+                                message: Text("Stasis can still manage charging, but this Mac does not expose MagSafe LED controls.")
+                            )
+                        }
+
+                        if capabilities.magsafeLEDControl && manageMagSafeLED {
+                            if hasChargingControl && enableHeatProtectionMode {
                                 Picker(
                                     "LED during heat protection",
                                     selection: $heatProtectionMagSafeLEDState
@@ -236,10 +375,6 @@ struct ChargingSettingsView: View {
                         }
                     } header: {
                         Text("MagSafe LED Control")
-                    } footer: {
-                        if !capabilities.magsafeLEDControl {
-                            Text("MagSafe LED control is not supported on this device.")
-                        }
                     }
                 }
             }
@@ -247,58 +382,357 @@ struct ChargingSettingsView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .contentMargins(.top, 0)
-        .animation(.default, value: manageCharging)
+        .animation(.default, value: isManageChargingOn)
         .animation(.default, value: sailingMode)
         .animation(.default, value: enableHeatProtectionMode)
         .animation(.default, value: manageMagSafeLED)
-        .animation(.default, value: helperManager.helperStatus)
-        .alert(
-            "Failed to install charging helper",
-            isPresented: Binding(
-                get: { installError != nil },
-                set: { if !$0 { installError = nil } }
+        .animation(.default, value: helperStatus)
+        .animation(.default, value: connectionStatus)
+        .onAppear {
+            guard previewState == nil else { return }
+            resetUnsupportedSettings()
+            chargingController.reconcileOnAppear(
+                hasAnyControl: hasAnyControl,
+                manageCharging: manageCharging,
+                setManageCharging: { manageCharging = $0 }
             )
-        ) {
-            Button("Ok") { installError = nil }
-        } message: {
-            if let installError {
-                Text(installError)
-            }
+        }
+        .onDisappear {
+            guard previewState == nil else { return }
+            chargingController.cancelPendingWork()
+        }
+        .onChange(of: helperManager.helperStatus) { _, newStatus in
+            guard previewState == nil else { return }
+            chargingController.handleHelperStatusChange(
+                newStatus,
+                setManageCharging: { manageCharging = $0 }
+            )
+        }
+        .onChange(of: helperManager.connectionStatus) { _, newStatus in
+            guard previewState == nil else { return }
+            chargingController.handleConnectionStatusChange(
+                newStatus,
+                manageCharging: manageCharging,
+                setManageCharging: { manageCharging = $0 }
+            )
         }
     }
 
     private func toggleManageCharging(_ enabled: Bool) {
-        do {
-            if enabled {
-                try helperManager.install()
-                if helperManager.helperStatus == .installed {
-                    manageCharging = true
-                }
-            } else {
-                try helperManager.uninstall()
-                manageCharging = false
-            }
-        } catch {
-            logger.error("Failed to \(enabled ? "install" : "uninstall") charging helper: \(error)")
-            installError = error.localizedDescription
+        if enabled {
+            chargingController.requestEnable(
+                hasAnyControl: hasAnyControl,
+                setManageCharging: { manageCharging = $0 }
+            )
+        } else {
+            chargingController.disable(setManageCharging: { manageCharging = $0 })
         }
     }
 
     private func checkApprovalStatus() {
-        helperManager.refreshStatus()
-        if helperManager.helperStatus == .installed {
-            manageCharging = true
+        chargingController.checkApprovalStatus(
+            setManageCharging: { manageCharging = $0 }
+        )
+    }
+
+    private func openApprovalSettings() {
+        chargingController.openApprovalSettings()
+    }
+
+    private func requestEnableChargingManagement() {
+        chargingController.requestEnable(
+            hasAnyControl: hasAnyControl,
+            setManageCharging: { manageCharging = $0 }
+        )
+    }
+
+    private func reconnectChargingDaemon() {
+        helperManager.disconnect()
+        requestEnableChargingManagement()
+    }
+
+    private func resetUnsupportedSettings() {
+        if !hasAnyControl {
+            manageCharging = false
+        }
+        if !hasAdapterControl {
+            automaticDischarge = false
+        }
+        if !hasChargingControl {
+            sailingMode = false
+            enableHeatProtectionMode = false
+        }
+        if !capabilities.magsafeLEDControl {
+            manageMagSafeLED = false
         }
     }
 }
 
-#Preview {
-    ChargingSettingsView(
-        capabilities: DeviceCapabilities(
-            chargingControl: true,
-            adapterControl: true,
-            hasMagSafe: true,
-            magsafeLEDControl: true
+private struct UnsupportedCapabilityMessage: View {
+    let title: Text
+    let message: Text
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+           title
+                .font(.subheadline)
+            message
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct ChargingDaemonStatusRow: View {
+    let message: String
+    let isLoading: Bool
+    let helperStatus: ChargingHelperStatus
+    let connectionStatus: ChargingDaemonConnectionStatus
+    let install: () -> Void
+    let openApprovalSettings: () -> Void
+    let retry: () -> Void
+    let reconnect: () -> Void
+
+    var body: some View {
+        LabeledContent {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                recoveryAction
+            }
+        } label: {
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var recoveryAction: some View {
+        switch helperStatus {
+        case .notInstalled:
+            Button("Install Helper", systemImage: "wrench.and.screwdriver") {
+                install()
+            }
+        case .requiresApproval:
+            Button("Open Login Items", systemImage: "gear") {
+                openApprovalSettings()
+            }
+        case .installed:
+            switch connectionStatus {
+            case .startupFailed:
+                Button("Try Again", systemImage: "arrow.clockwise") {
+                    retry()
+                }
+            case .runtimeFailed, .interrupted, .invalidated, .disconnected:
+                Button("Reconnect", systemImage: "arrow.clockwise") {
+                    reconnect()
+                }
+            case .connecting:
+                EmptyView()
+            case .connected:
+                Button("Retry", systemImage: "arrow.clockwise") {
+                    retry()
+                }
+            }
+        }
+    }
+}
+
+fileprivate struct ChargingSettingsPreviewState {
+    let title: String
+    let helperStatus: ChargingHelperStatus
+    let connectionStatus: ChargingDaemonConnectionStatus
+    let manageCharging: Bool
+    let isVerifying: Bool
+    let errorMessage: String?
+}
+
+private extension DeviceCapabilities {
+    static let chargingSettingsPreview = DeviceCapabilities(
+        chargingControl: true,
+        adapterControl: true,
+        hasMagSafe: true,
+        magsafeLEDControl: true
+    )
+
+    static let chargingSettingsAdapterUnsupportedPreview = DeviceCapabilities(
+        chargingControl: true,
+        adapterControl: false,
+        hasMagSafe: true,
+        magsafeLEDControl: true
+    )
+
+    static let chargingSettingsChargingUnsupportedPreview = DeviceCapabilities(
+        chargingControl: false,
+        adapterControl: true,
+        hasMagSafe: true,
+        magsafeLEDControl: true
+    )
+
+    static let chargingSettingsMagSafeLEDUnsupportedPreview = DeviceCapabilities(
+        chargingControl: true,
+        adapterControl: true,
+        hasMagSafe: true,
+        magsafeLEDControl: false
+    )
+}
+
+private struct ChargingSettingsPreviewContainer: View {
+    let state: ChargingSettingsPreviewState
+    var capabilities: DeviceCapabilities = .chargingSettingsPreview
+
+    var body: some View {
+        ChargingSettingsView(
+            capabilities: capabilities,
+            previewState: state
+        )
+        .frame(width: 520, height: 680)
+    }
+}
+
+#Preview("Ready") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Ready",
+            helperStatus: .installed,
+            connectionStatus: .connected,
+            manageCharging: true,
+            isVerifying: false,
+            errorMessage: nil
         )
     )
+}
+
+#Preview("Checking Helper") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Checking Helper",
+            helperStatus: .installed,
+            connectionStatus: .connecting,
+            manageCharging: false,
+            isVerifying: true,
+            errorMessage: nil
+        )
+    )
+}
+
+#Preview("Requires Approval") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Requires Approval",
+            helperStatus: .requiresApproval,
+            connectionStatus: .disconnected,
+            manageCharging: false,
+            isVerifying: false,
+            errorMessage: "Approve Stasis in System Settings to enable charge management."
+        )
+    )
+}
+
+#Preview("Setting Up Helper") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Setting Up Helper",
+            helperStatus: .notInstalled,
+            connectionStatus: .disconnected,
+            manageCharging: false,
+            isVerifying: true,
+            errorMessage: nil
+        )
+    )
+}
+
+#Preview("Startup Failed") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Startup Failed",
+            helperStatus: .installed,
+            connectionStatus: .startupFailed("Charging daemon did not respond while verify charging daemon."),
+            manageCharging: false,
+            isVerifying: false,
+            errorMessage: "Charging daemon did not respond while verify charging daemon."
+        )
+    )
+}
+
+#Preview("Runtime Interrupted") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Runtime Interrupted",
+            helperStatus: .installed,
+            connectionStatus: .interrupted,
+            manageCharging: false,
+            isVerifying: false,
+            errorMessage: "Charging daemon connection was interrupted."
+        )
+    )
+}
+
+#Preview("Runtime Failed") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Runtime Failed",
+            helperStatus: .installed,
+            connectionStatus: .runtimeFailed("Charging daemon did not respond while manage battery charging."),
+            manageCharging: false,
+            isVerifying: false,
+            errorMessage: "Charging daemon did not respond while manage battery charging."
+        )
+    )
+}
+
+#Preview("Adapter Unsupported") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Adapter Unsupported",
+            helperStatus: .installed,
+            connectionStatus: .connected,
+            manageCharging: true,
+            isVerifying: false,
+            errorMessage: nil
+        ),
+        capabilities: .chargingSettingsAdapterUnsupportedPreview
+    )
+}
+
+#Preview("Charging Unsupported") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "Charging Unsupported",
+            helperStatus: .installed,
+            connectionStatus: .connected,
+            manageCharging: true,
+            isVerifying: false,
+            errorMessage: nil
+        ),
+        capabilities: .chargingSettingsChargingUnsupportedPreview
+    )
+}
+
+#Preview("MagSafe LED Unsupported") {
+    ChargingSettingsPreviewContainer(
+        state: ChargingSettingsPreviewState(
+            title: "MagSafe LED Unsupported",
+            helperStatus: .installed,
+            connectionStatus: .connected,
+            manageCharging: true,
+            isVerifying: false,
+            errorMessage: nil
+        ),
+        capabilities: .chargingSettingsMagSafeLEDUnsupportedPreview
+    )
+}
+
+#Preview("Unsupported") {
+    ChargingSettingsView(
+        capabilities: DeviceCapabilities(
+            chargingControl: false,
+            adapterControl: false,
+            hasMagSafe: false,
+            magsafeLEDControl: false
+        )
+    )
+    .frame(width: 520, height: 420)
 }

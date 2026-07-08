@@ -177,10 +177,10 @@ class ChargingCoordinator {
     }
 
     /// Fires a hardware command asynchronously and logs on failure.
-    /// Commands are best-effort from `ChargingCoordinator`'s perspective —
-    /// if one fails transiently, the next evaluation pass will simply
-    /// compute the same decision again and retry, so failures are logged
-    /// rather than surfaced anywhere else.
+    /// Commands are best-effort from `ChargingCoordinator`'s perspective.
+    /// If one fails transiently, the next evaluation pass can compute the
+    /// same decision again and retry; the failure is also forwarded to
+    /// Settings so the user can see the daemon's runtime state.
     ///
     /// Pulled out because `setCharging`, `setAdapter`, and `setLED` used to
     /// each repeat the same "log, wrap in `Task`, `do`/`catch`, log the
@@ -199,6 +199,7 @@ class ChargingCoordinator {
                 }
             } catch {
                 logger.error("\(label) failed: \(error)")
+                ChargingDaemonManager.shared.recordRuntimeError(error, while: label)
             }
         }
     }

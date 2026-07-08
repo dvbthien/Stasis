@@ -44,6 +44,7 @@ class BatteryService {
         // entire lifetime would keep that process alive continuously, even
         // when nothing is polling it.
         startIOKitMonitoring()
+        scheduleSinglePoll()
     }
 
     func loadCapabilities() async {
@@ -76,6 +77,7 @@ class BatteryService {
 
     func scheduleSinglePoll(delay: Duration = .seconds(3)) {
         smcPoller.scheduleSinglePoll(delay: delay)
+        logger.debug("Received SMC update")
     }
 
     private func handleSMCReading(_ batteryReading: SMCBatteryReading, _ adapterReading: SMCAdapterReading) {
@@ -141,57 +143,27 @@ class BatteryService {
     }
 
     func manageBatteryCharging(enabled: Bool) async throws {
-        let helper = try getChargingHelper()
-        try await withCheckedThrowingContinuation { continuation in
+        try await ChargingDaemonManager.shared.executeCommand("manage battery charging") { helper, reply in
             helper.manageBatteryCharging(enabled: enabled) { success, errorMessage in
-                if success {
-                    continuation.resume()
-                } else {
-                    continuation.resume(
-                        throwing: XPCError.commandFailed(errorMessage ?? "Unknown error"))
-                }
+                reply(success, errorMessage)
             }
         }
     }
 
     func manageExternalPower(enabled: Bool) async throws {
-        let helper = try getChargingHelper()
-        try await withCheckedThrowingContinuation { continuation in
+        try await ChargingDaemonManager.shared.executeCommand("manage external power") { helper, reply in
             helper.manageExternalPower(enabled: enabled) { success, errorMessage in
-                if success {
-                    continuation.resume()
-                } else {
-                    continuation.resume(
-                        throwing: XPCError.commandFailed(errorMessage ?? "Unknown error"))
-                }
+                reply(success, errorMessage)
             }
         }
     }
 
     func manageMagsafeLED(target: MagSafeLEDState) async throws {
-        let helper = try getChargingHelper()
-        try await withCheckedThrowingContinuation { continuation in
+        try await ChargingDaemonManager.shared.executeCommand("manage MagSafe LED") { helper, reply in
             helper.manageMagsafeLED(target: target.rawValue) { success, errorMessage in
-                if success {
-                    continuation.resume()
-                } else {
-                    continuation.resume(
-                        throwing: XPCError.commandFailed(errorMessage ?? "Unknown error"))
-                }
+                reply(success, errorMessage)
             }
         }
-    }
-
-    private func getChargingHelper() throws -> ChargingHelperProtocol {
-        let logger = self.logger
-        guard
-            let helper = ChargingDaemonManager.shared.getHelper(errorHandler: { error in
-                logger.error("Charging helper XPC error: \(error.localizedDescription)")
-            })
-        else {
-            throw XPCError.helperUnavailable
-        }
-        return helper
     }
 
     func stop() {

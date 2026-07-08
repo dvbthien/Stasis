@@ -6,6 +6,7 @@ import Foundation
 enum XPCError: LocalizedError {
     case helperUnavailable
     case commandFailed(String)
+    case timedOut(String)
 
     var errorDescription: String? {
         switch self {
@@ -13,14 +14,27 @@ enum XPCError: LocalizedError {
             "XPC helper is unavailable"
         case .commandFailed(let message):
             "Command failed: \(message)"
+        case .timedOut(let message):
+            message
         }
     }
 }
 
 /// Installation state of the privileged charging-control daemon, as reported
 /// by `SMAppService`.
-enum ChargingHelperStatus {
+enum ChargingHelperStatus: Equatable {
     case notInstalled
     case requiresApproval
     case installed
+}
+
+/// Runtime state of the app's XPC connection to the charging-control daemon.
+enum ChargingDaemonConnectionStatus: Equatable {
+    case disconnected
+    case connecting
+    case connected
+    case interrupted
+    case invalidated
+    case startupFailed(String)
+    case runtimeFailed(String)
 }

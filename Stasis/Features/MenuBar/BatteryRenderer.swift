@@ -87,11 +87,6 @@ extension BatteryRenderer {
         var capWidth: CGFloat = 2
         var capHeight: CGFloat = 4
         var cornerRadius: CGFloat = 3
-        var font: NSFont {
-            isInsideMode
-            ? .systemFont(ofSize: 8.5, weight: .bold)
-                : .systemFont(ofSize: 11)
-        }
 
         // Chuỗi Văn Bản & Định dạng nghệ thuật
         var outsideText: String { "\(level)%" }
@@ -126,7 +121,9 @@ extension BatteryRenderer {
         // Bảng Màu Động (Dynamic Color Matching)
         var fillColor: NSColor {
             if isCritical { return .systemRed }
-            if isLowPower { return NSColor(red: 0.85, green: 0.65, blue: 0.0, alpha: 1.0) }
+            if isLowPower {
+                return NSColor(red: 0.85, green: 0.65, blue: 0.0, alpha: 1.0)
+            }
             if chargingMode == .charging { return .systemGreen }
             return .textColor
         }
@@ -241,49 +238,57 @@ extension BatteryRenderer {
             }
         }
     }
+    
+    private static let batteryTextAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 8.5, weight: .bold),
+        .foregroundColor: NSColor.textColor,
+    ]
+    private static let glyphAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 12, weight: .heavy),
+        .foregroundColor: NSColor.textColor,
+        .strokeColor: NSColor.controlBackgroundColor,
+        .strokeWidth: -5.0,
+    ]
 
     /// BƯỚC D: Vẽ Chữ Số Đè Bên Trong Hoặc Ký Hiệu Sạc (Bolt/Plug)
     private static func drawForegroundLayer(
         in rect: NSRect,
         context: RenderContext
     ) {
+        let isDischarging = context.chargingMode == .discharging
         let glyph = context.chargingMode == .charging ? "􀋦" : "􂬺"
         if context.isInsideMode {
-            NSGraphicsContext.current?.saveGraphicsState()
+            let batteryText =
+                isDischarging ? "\(context.level)" : "\(context.level)\(glyph)"
 
-            // Kỹ thuật đục lỗ (Knockout) chữ xuyên qua thanh năng lượng y hệt SwiftUI BlendMode
+            let batteryTextSize = batteryText.size(withAttributes: batteryTextAttributes)
+
+            let batteryTextX =
+                context.batteryXOffset + (context.bodyWidth - batteryTextSize.width)
+                / 2
+            let batteryTextY = (rect.height - batteryTextSize.height) / 2 + 0.5
+            
+            // Kỹ thuật đục lỗ (Knockout) — chỉ save/restore khi thực sự cần đổi blend mode
             if context.usesPassthroughKnockout {
+                NSGraphicsContext.current?.saveGraphicsState()
                 NSGraphicsContext.current?.cgContext.setBlendMode(
                     .destinationOut
                 )
+
+                batteryText.draw(
+                    at: NSPoint(x: batteryTextX, y: batteryTextY),
+                    withAttributes: batteryTextAttributes
+                )
+
+                NSGraphicsContext.current?.restoreGraphicsState()
+            } else {
+                batteryText.draw(
+                    at: NSPoint(x: batteryTextX, y: batteryTextY),
+                    withAttributes: batteryTextAttributes
+                )
             }
-            let text = "\(context.level)\(glyph)"
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: context.font,
-                .foregroundColor: NSColor.textColor,
-            ]
-            let textSize = text.size(withAttributes: attributes)
 
-            let textX =
-                context.batteryXOffset + (context.bodyWidth - textSize.width)
-                / 2
-            let textY = (rect.height - textSize.height) / 2 + 0.5
-            text.draw(
-                at: NSPoint(x: textX, y: textY),
-                withAttributes: attributes
-            )
-
-            NSGraphicsContext.current?.restoreGraphicsState()
-
-        } else if context.chargingMode != .discharging {
-            let glyphAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 12, weight: .heavy),
-                .foregroundColor: NSColor.textColor,  // Màu chính bên trong biểu tượng
-                // --- ĐÂY LÀ PHẦN TẠO VIỀN ĐƠN GIẢN ---
-                .strokeColor: NSColor.controlBackgroundColor,  // Màu của viền (màu nền pin)
-                .strokeWidth: -5.0,  // Số ÂM giúp giữ lại màu chữ bên trong và tạo viền ngoài
-            ]
-
+        } else if !isDischarging {
             let glyphSize = glyph.size(withAttributes: glyphAttributes)
             let glyphX =
                 context.batteryXOffset + (context.bodyWidth - glyphSize.width)
@@ -303,8 +308,6 @@ extension BatteryRenderer {
         NSBezierPath(roundedRect: rect, xRadius: 1.5, yRadius: 1.5).fill()
     }
 }
-
-
 
 #Preview {
     VStack(alignment: .leading, spacing: 16) {
