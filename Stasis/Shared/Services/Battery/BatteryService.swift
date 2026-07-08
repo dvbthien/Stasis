@@ -18,158 +18,163 @@ import smc_power
 @MainActor
 @Observable
 class BatteryService {
-    var metrics = BatteryMetrics()
-    var adapterMetrics = AdapterMetrics()
-    private(set) var controlState = BatteryControlState()
-    private(set) var deviceCapabilities = DeviceCapabilities.unknown
+  var metrics = BatteryMetrics()
+  var adapterMetrics = AdapterMetrics()
+  private(set) var controlState = BatteryControlState()
+  private(set) var deviceCapabilities = DeviceCapabilities.unknown
 
-    private let ioKitService = IOKitService()
-    private var smcPoller: SMCMetricsPoller!
+  private let ioKitService = IOKitService()
+  private var smcPoller: SMCMetricsPoller!
 
-    private var ioKitMonitorTask: Task<Void, Never>?
+  private var ioKitMonitorTask: Task<Void, Never>?
 
-    private let logger = Logger.stasis("BatteryService")
+  private let logger = Logger.stasis("BatteryService")
 
-    init() {
-        logger.info("BatteryService initialized")
-        smcPoller = SMCMetricsPoller(
-            serviceName: "com.srimanachanta.stasis-monitor-helper",
-            onReading: { [weak self] battery, adapter in
-                self?.handleSMCReading(battery, adapter)
-            }
-        )
-        // The XPC connection to the SMC helper is created lazily by
-        // SMCMetricsPoller on first use, not eagerly here. The helper is an
-        // on-demand XPC Service: holding a connection open for the app's
-        // entire lifetime would keep that process alive continuously, even
-        // when nothing is polling it.
-        startIOKitMonitoring()
-        scheduleSinglePoll()
+  init() {
+    logger.info("BatteryService initialized")
+    smcPoller = SMCMetricsPoller(
+      serviceName: "com.srimanachanta.stasis-monitor-helper",
+      onReading: { [weak self] battery, adapter in
+        self?.handleSMCReading(battery, adapter)
+      }
+    )
+    // The XPC connection to the SMC helper is created lazily by
+    // SMCMetricsPoller on first use, not eagerly here. The helper is an
+    // on-demand XPC Service: holding a connection open for the app's
+    // entire lifetime would keep that process alive continuously, even
+    // when nothing is polling it.
+    startIOKitMonitoring()
+    scheduleSinglePoll()
+  }
+
+  func loadCapabilities() async {
+    guard let capabilities = await smcPoller.loadCapabilities() else {
+      return
+    }
+    self.deviceCapabilities = capabilities
+    logger.info(
+      "Capabilities loaded: charging=\(capabilities.chargingControl), adapter=\(capabilities.adapterControl), magSafe=\(capabilities.hasMagSafe)"
+    )
+  }
+
+  private func startIOKitMonitoring() {
+    logger.info("Starting IOKit monitoring in main app")
+    ioKitMonitorTask = Task {
+      for await (newBatteryMetrics, newAdapterMetrics) in self.ioKitService.metricsStream() {
+        guard !Task.isCancelled else { break }
+        self.handleIOKitUpdate(newBatteryMetrics, adapterUpdate: newAdapterMetrics)
+      }
+    }
+  }
+
+  func enableFastPolling() {
+    smcPoller.start()
+  }
+
+  func disableFastPolling() {
+    smcPoller.stop()
+  }
+
+  func scheduleSinglePoll(delay: Duration = .seconds(3)) {
+    smcPoller.scheduleSinglePoll(delay: delay)
+    logger.debug("Received SMC update")
+  }
+
+  private func handleSMCReading(
+    _ batteryReading: SMCBatteryReading, _ adapterReading: SMCAdapterReading
+  ) {
+    var updatedBattery = metrics
+    updatedBattery.batteryVoltage = batteryReading.batteryVoltage
+    updatedBattery.batteryCurrent = batteryReading.batteryCurrent
+    updatedBattery.batteryPower = batteryReading.batteryPower
+
+    var updatedAdapter = adapterMetrics
+    updatedAdapter.adapterVoltage = adapterReading.adapterVoltage
+    updatedAdapter.adapterCurrent = adapterReading.adapterCurrent
+    updatedAdapter.adapterPower = adapterReading.adapterPower
+
+    // SMC reports faster than IOKit can update, so refine isCharging
+    // using the actual power flow direction.
+    if updatedAdapter.adapterConnected {
+      updatedBattery.isCharging = batteryReading.batteryPower > 0
     }
 
-    func loadCapabilities() async {
-        guard let capabilities = await smcPoller.loadCapabilities() else {
-            return
-        }
-        self.deviceCapabilities = capabilities
-        logger.info(
-            "Capabilities loaded: charging=\(capabilities.chargingControl), adapter=\(capabilities.adapterControl), magSafe=\(capabilities.hasMagSafe)"
-        )
+    if updatedBattery != metrics {
+      metrics = updatedBattery
+    }
+    if updatedAdapter != adapterMetrics {
+      adapterMetrics = updatedAdapter
+    }
+    updateControlState(from: updatedBattery, adapter: updatedAdapter)
+  }
+
+  private func handleIOKitUpdate(_ newBatteryMetrics: BatteryMetrics, adapterUpdate: AdapterMetrics)
+  {
+    logger.debug("Received IOKit update")
+
+    var updatedBattery = newBatteryMetrics
+    updatedBattery.batteryVoltage = metrics.batteryVoltage
+    updatedBattery.batteryCurrent = metrics.batteryCurrent
+    updatedBattery.batteryPower = metrics.batteryPower
+
+    if updatedBattery != metrics {
+      metrics = updatedBattery
     }
 
-    private func startIOKitMonitoring() {
-        logger.info("Starting IOKit monitoring in main app")
-        ioKitMonitorTask = Task {
-            for await (newBatteryMetrics, newAdapterMetrics) in self.ioKitService.metricsStream() {
-                guard !Task.isCancelled else { break }
-                self.handleIOKitUpdate(newBatteryMetrics, adapterUpdate: newAdapterMetrics)
-            }
-        }
+    var updatedAdapter = adapterUpdate
+    updatedAdapter.adapterVoltage = adapterMetrics.adapterVoltage
+    updatedAdapter.adapterCurrent = adapterMetrics.adapterCurrent
+    updatedAdapter.adapterPower = adapterMetrics.adapterPower
+
+    if updatedAdapter != adapterMetrics {
+      adapterMetrics = updatedAdapter
     }
 
-    func enableFastPolling() {
-        smcPoller.start()
+    updateControlState(from: updatedBattery, adapter: updatedAdapter)
+  }
+
+  private func updateControlState(from metrics: BatteryMetrics, adapter: AdapterMetrics) {
+    let newState = BatteryControlState(
+      batteryPercentage: metrics.batteryPercentage,
+      hardwareBatteryPercentage: metrics.hardwareBatteryPercentage,
+      adapterConnected: adapter.adapterConnected,
+      batteryTemperature: metrics.batteryTemperature
+    )
+    if newState != controlState {
+      controlState = newState
     }
+  }
 
-    func disableFastPolling() {
-        smcPoller.stop()
+  func manageBatteryCharging(enabled: Bool) async throws {
+    try await ChargingDaemonManager.shared.executeCommand("manage battery charging") {
+      helper, reply in
+      helper.manageBatteryCharging(enabled: enabled) { success, errorMessage in
+        reply(success, errorMessage)
+      }
     }
+  }
 
-    func scheduleSinglePoll(delay: Duration = .seconds(3)) {
-        smcPoller.scheduleSinglePoll(delay: delay)
-        logger.debug("Received SMC update")
+  func manageExternalPower(enabled: Bool) async throws {
+    try await ChargingDaemonManager.shared.executeCommand("manage external power") {
+      helper, reply in
+      helper.manageExternalPower(enabled: enabled) { success, errorMessage in
+        reply(success, errorMessage)
+      }
     }
+  }
 
-    private func handleSMCReading(_ batteryReading: SMCBatteryReading, _ adapterReading: SMCAdapterReading) {
-        var updatedBattery = metrics
-        updatedBattery.batteryVoltage = batteryReading.batteryVoltage
-        updatedBattery.batteryCurrent = batteryReading.batteryCurrent
-        updatedBattery.batteryPower = batteryReading.batteryPower
-
-        var updatedAdapter = adapterMetrics
-        updatedAdapter.adapterVoltage = adapterReading.adapterVoltage
-        updatedAdapter.adapterCurrent = adapterReading.adapterCurrent
-        updatedAdapter.adapterPower = adapterReading.adapterPower
-
-        // SMC reports faster than IOKit can update, so refine isCharging
-        // using the actual power flow direction.
-        if updatedAdapter.adapterConnected {
-            updatedBattery.isCharging = batteryReading.batteryPower > 0
-        }
-
-        if updatedBattery != metrics {
-            metrics = updatedBattery
-        }
-        if updatedAdapter != adapterMetrics {
-            adapterMetrics = updatedAdapter
-        }
-        updateControlState(from: updatedBattery, adapter: updatedAdapter)
+  func manageMagsafeLED(target: MagSafeLEDState) async throws {
+    try await ChargingDaemonManager.shared.executeCommand("manage MagSafe LED") { helper, reply in
+      helper.manageMagsafeLED(target: target.rawValue) { success, errorMessage in
+        reply(success, errorMessage)
+      }
     }
+  }
 
-    private func handleIOKitUpdate(_ newBatteryMetrics: BatteryMetrics, adapterUpdate: AdapterMetrics) {
-        logger.debug("Received IOKit update")
-
-        var updatedBattery = newBatteryMetrics
-        updatedBattery.batteryVoltage = metrics.batteryVoltage
-        updatedBattery.batteryCurrent = metrics.batteryCurrent
-        updatedBattery.batteryPower = metrics.batteryPower
-
-        if updatedBattery != metrics {
-            metrics = updatedBattery
-        }
-
-        var updatedAdapter = adapterUpdate
-        updatedAdapter.adapterVoltage = adapterMetrics.adapterVoltage
-        updatedAdapter.adapterCurrent = adapterMetrics.adapterCurrent
-        updatedAdapter.adapterPower = adapterMetrics.adapterPower
-
-        if updatedAdapter != adapterMetrics {
-            adapterMetrics = updatedAdapter
-        }
-
-        updateControlState(from: updatedBattery, adapter: updatedAdapter)
-    }
-
-    private func updateControlState(from metrics: BatteryMetrics, adapter: AdapterMetrics) {
-        let newState = BatteryControlState(
-            batteryPercentage: metrics.batteryPercentage,
-            hardwareBatteryPercentage: metrics.hardwareBatteryPercentage,
-            adapterConnected: adapter.adapterConnected,
-            batteryTemperature: metrics.batteryTemperature
-        )
-        if newState != controlState {
-            controlState = newState
-        }
-    }
-
-    func manageBatteryCharging(enabled: Bool) async throws {
-        try await ChargingDaemonManager.shared.executeCommand("manage battery charging") { helper, reply in
-            helper.manageBatteryCharging(enabled: enabled) { success, errorMessage in
-                reply(success, errorMessage)
-            }
-        }
-    }
-
-    func manageExternalPower(enabled: Bool) async throws {
-        try await ChargingDaemonManager.shared.executeCommand("manage external power") { helper, reply in
-            helper.manageExternalPower(enabled: enabled) { success, errorMessage in
-                reply(success, errorMessage)
-            }
-        }
-    }
-
-    func manageMagsafeLED(target: MagSafeLEDState) async throws {
-        try await ChargingDaemonManager.shared.executeCommand("manage MagSafe LED") { helper, reply in
-            helper.manageMagsafeLED(target: target.rawValue) { success, errorMessage in
-                reply(success, errorMessage)
-            }
-        }
-    }
-
-    func stop() {
-        logger.info("BatteryService stopping")
-        ioKitMonitorTask?.cancel()
-        ioKitMonitorTask = nil
-        smcPoller.shutdown()
-    }
+  func stop() {
+    logger.info("BatteryService stopping")
+    ioKitMonitorTask?.cancel()
+    ioKitMonitorTask = nil
+    smcPoller.shutdown()
+  }
 }
