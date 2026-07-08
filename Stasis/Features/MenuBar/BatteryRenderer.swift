@@ -238,7 +238,7 @@ extension BatteryRenderer {
             }
         }
     }
-    
+
     private static let batteryTextAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 8.5, weight: .bold),
         .foregroundColor: NSColor.textColor,
@@ -267,7 +267,7 @@ extension BatteryRenderer {
                 context.batteryXOffset + (context.bodyWidth - batteryTextSize.width)
                 / 2
             let batteryTextY = (rect.height - batteryTextSize.height) / 2 + 0.5
-            
+
             // Kỹ thuật đục lỗ (Knockout) — chỉ save/restore khi thực sự cần đổi blend mode
             if context.usesPassthroughKnockout {
                 NSGraphicsContext.current?.saveGraphicsState()

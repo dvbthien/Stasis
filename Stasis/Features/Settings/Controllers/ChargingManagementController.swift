@@ -52,7 +52,7 @@ final class ChargingManagementController {
 
     private let helperManager: ChargingDaemonManager
     private let logger = Logger.stasis("ChargingManagementController")
-    
+
     private var enableTask: Task<Void, Never>?
     private var spinnerTask: Task<Void, Never>?
     private var spinnerShownAt: ContinuousClock.Instant?
