@@ -58,4 +58,5 @@ extension Defaults.Keys {
         "heatProtectionMagSafeLEDState", default: MagSafeLEDState.blinkOrangeSlow)
     // Advanced
     static let useHardwarePercentage = Key<Bool>("useHardwarePercentage", default: false)
+    static let restartOnClose = Key<Bool>("restartOnClose", default: false)
 }
