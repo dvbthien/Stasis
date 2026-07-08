@@ -6,7 +6,7 @@ import smc_power
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let capabilities: DeviceCapabilities
-    private var pendingRestart: DispatchWorkItem?
+    private var pendingRestart: Task<Void, Never>?
 
     // Store device capabilities so every new Settings window gets the same hardware context.
     init(capabilities: DeviceCapabilities) {
@@ -75,14 +75,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     // Defer restart briefly so normal app termination can cancel it first.
     private func scheduleRestart() {
-        let work = DispatchWorkItem { [weak self] in
-            guard self?.pendingRestart?.isCancelled == false else { return }
+        pendingRestart = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled else { return }
+
             self?.launchReplacementApp()
             NSApp.terminate(nil)
         }
-
-        pendingRestart = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
     }
 
     // Launch a replacement app process before terminating the current one.
