@@ -7,9 +7,10 @@ import UserNotifications
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusBarManager: StatusBarManager!
     private var batteryService: BatteryService!
-    private var viewModel: MenuViewModel!
+    private var chargingCoordinator: ChargingCoordinator!
+    private var lowPowerModeMonitor: LowPowerModeMonitor!
+    private var uptimeClock: UptimeClock!
     private var menuBuilder: MenuBuilder!
-    private var chargeManager: ChargeManager!
     private var settingsWindowController: SettingsWindowController!
     private var menu: NSMenu!
     private var settingsObservation: Task<Void, Never>?
@@ -37,18 +38,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupServices() async {
         batteryService = BatteryService()
         await batteryService.loadCapabilities()
-        chargeManager = ChargeManager(batteryService: batteryService)
-        viewModel = MenuViewModel(
-            batteryService: batteryService,
-            chargeManager: chargeManager
-        )
+        chargingCoordinator = ChargingCoordinator(batteryService: batteryService)
+        lowPowerModeMonitor = LowPowerModeMonitor()
+        uptimeClock = UptimeClock()
         settingsWindowController = SettingsWindowController(
             capabilities: batteryService.deviceCapabilities)
         menuBuilder = MenuBuilder(
-            viewModel: viewModel,
+            batteryService: batteryService,
+            chargingCoordinator: chargingCoordinator,
+            uptimeClock: uptimeClock,
             settingsWindowController: settingsWindowController
         )
-        statusBarManager = StatusBarManager(viewModel: viewModel)
+        statusBarManager = StatusBarManager(
+            batteryService: batteryService,
+            lowPowerModeMonitor: lowPowerModeMonitor
+        )
     }
 
     private func setupMenu() {
@@ -79,7 +83,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.rebuildMenu()
                 await withCheckedContinuation { continuation in
                     withObservationTracking {
-                        _ = self.viewModel.adapterConnected
+                        // `controlState` only changes on percentage/temperature/
+                        // adapter-connection transitions — unlike `adapterMetrics`,
+                        // it doesn't carry the jittery SMC voltage/current
+                        // readings, so this doesn't rebuild the whole menu on
+                        // every fast-poll tick.
+                        _ = self.batteryService.controlState.adapterConnected
                     } onChange: {
                         Task { @MainActor in
                             continuation.resume()
@@ -100,11 +109,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { _, _ in }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        settingsObservation?.cancel()
+        settingsObservation = nil
+        adapterObservation?.cancel()
+        adapterObservation = nil
+
+        chargingCoordinator?.stop()
+        batteryService?.stop()
+        uptimeClock?.stop()
+        ChargingDaemonManager.shared.disconnect()
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
-        viewModel.menuWillOpen()
+        uptimeClock.start()
+        batteryService.enableFastPolling()
     }
 
     func menuDidClose(_ menu: NSMenu) {
-        viewModel.menuDidClose()
+        uptimeClock.stop()
+        batteryService.disableFastPolling()
     }
 }

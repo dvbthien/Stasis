@@ -167,15 +167,8 @@
         }
       }
     },
-    "Approve Stasis in System Settings → Login Items to continue." : {
-      "localizations" : {
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cho phép Stasis trong Cài đặt hệ thống → Mục đăng nhập để tiếp tục."
-          }
-        }
-      }
+    "Approve Stasis in Login Items to enable charge management." : {
+
     },
     "Automatic discharge" : {
       "localizations" : {
@@ -216,6 +209,9 @@
           }
         }
       }
+    },
+    "Automatic discharge requires adapter control support from this Mac." : {
+
     },
     "Automatically resume charging when the battery drops below the threshold relative to your charge limit." : {
       "localizations" : {
@@ -266,6 +262,9 @@
           }
         }
       }
+    },
+    "Battery & Power Adapter" : {
+
     },
     "Battery Health" : {
       "localizations" : {
@@ -527,6 +526,9 @@
         }
       }
     },
+    "Calculating..." : {
+
+    },
     "Charge limit" : {
       "localizations" : {
         "de" : {
@@ -618,6 +620,7 @@
       }
     },
     "Charge management is not supported on this device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -656,6 +659,9 @@
           }
         }
       }
+    },
+    "Charge management is unavailable on this Mac." : {
+
     },
     "Charging" : {
       "localizations" : {
@@ -1197,6 +1203,9 @@
         }
       }
     },
+    "Discharging" : {
+
+    },
     "Display battery percentage next to or inside the menu bar icon." : {
       "localizations" : {
         "vi" : {
@@ -1258,6 +1267,7 @@
       }
     },
     "Failed to install charging helper" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1507,6 +1517,9 @@
         }
       }
     },
+    "Heat protection requires charging control support from this Mac." : {
+
+    },
     "Hidden" : {
       "localizations" : {
         "vi" : {
@@ -1526,6 +1539,9 @@
           }
         }
       }
+    },
+    "Install Helper" : {
+
     },
     "Launch at login" : {
       "localizations" : {
@@ -1857,6 +1873,9 @@
         }
       }
     },
+    "Not Charging" : {
+
+    },
     "Notifications" : {
       "localizations" : {
         "de" : {
@@ -1938,6 +1957,7 @@
       }
     },
     "Ok" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1976,6 +1996,9 @@
           }
         }
       }
+    },
+    "Open Login Items" : {
+
     },
     "Orange" : {
       "localizations" : {
@@ -2057,6 +2080,9 @@
         }
       }
     },
+    "Plugged In (Not Charging)" : {
+
+    },
     "Power" : {
       "localizations" : {
         "de" : {
@@ -2096,6 +2122,9 @@
           }
         }
       }
+    },
+    "Power Adapter" : {
+
     },
     "Power distribution diagram" : {
       "localizations" : {
@@ -2267,6 +2296,12 @@
         }
       }
     },
+    "Reconnect" : {
+
+    },
+    "Retry" : {
+
+    },
     "Sailing Mode" : {
       "localizations" : {
         "vi" : {
@@ -2276,6 +2311,9 @@
           }
         }
       }
+    },
+    "Sailing mode requires charging control support from this Mac." : {
+
     },
     "Settings" : {
       "localizations" : {
@@ -2392,6 +2430,12 @@
           }
         }
       }
+    },
+    "Stasis can still manage charging, but this Mac does not expose MagSafe LED controls." : {
+
+    },
+    "Stasis can still monitor battery status, but this hardware does not expose charging or adapter controls." : {
+
     },
     "Stasis Settings" : {
       "localizations" : {
@@ -2612,6 +2656,12 @@
           }
         }
       }
+    },
+    "Try Again" : {
+
+    },
+    "Unknown" : {
+
     },
     "Uptime" : {
       "localizations" : {
