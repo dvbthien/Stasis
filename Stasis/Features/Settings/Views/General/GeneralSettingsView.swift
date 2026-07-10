@@ -2,14 +2,19 @@ import Defaults
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @Default(.launchAtLogin) var launchAtLogin
-    @Default(.batteryPercentageDisplayLocation) var batteryPercentageDisplayLocation
-    @Default(.showBatteryStateInStatusIcon) var showBatteryStateInStatusIcon
-    @Default(.disableNotifications) var disableNotifications
-    @Default(.showChargingStatusChangedNotification) var showChargingStatusChangedNotification
+    @Default(.launchAtLogin) private var launchAtLogin
+    @Default(.batteryPercentageDisplayLocation) private var batteryPercentageDisplayLocation
+    @Default(.showBatteryStateInStatusIcon) private var showBatteryStateInStatusIcon
+    @Default(.disableNotifications) private var disableNotifications
+    @Default(.showChargingStatusChangedNotification) private var showChargingStatusChangedNotification
 
     var body: some View {
         Form {
+            SettingsPageHeader(
+                title: "General",
+                message: "Control how Stasis starts, appears in the menu bar, and sends notifications."
+            )
+
             Section("Startup") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
             }
@@ -22,14 +27,10 @@ struct GeneralSettingsView: View {
                 }
                 Toggle("Show battery state", isOn: $showBatteryStateInStatusIcon)
             } header: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Menu Bar Icon")
-                    Text(
-                        "Display battery percentage next to or inside the menu bar icon."
-                    )
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                }
+                SettingsSectionHeader(
+                    "Menu Bar Icon",
+                    message: "Display battery percentage next to or inside the menu bar icon."
+                )
             }
 
             Section {
@@ -37,17 +38,13 @@ struct GeneralSettingsView: View {
                 Toggle("Charging status changed", isOn: $showChargingStatusChangedNotification)
                     .disabled(disableNotifications)
             } header: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Notifications")
-                    Text("Control when Stasis sends you notifications.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                SettingsSectionHeader(
+                    "Notifications",
+                    message: "Control when Stasis sends you notifications."
+                )
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .contentMargins(.top, 0)
+        .settingsFormLayout()
         .onChange(of: launchAtLogin) { _, newValue in
             LaunchAtLoginService.shared.setLaunchAtLogin(newValue)
         }

@@ -1,58 +1,36 @@
 import SwiftUI
 import smc_power
 
-enum SettingsTab: String, CaseIterable, Identifiable {
-    case general = "General"
-    case dashboard = "Dashboard"
-    case charging = "Charging"
-    case advanced = "Advanced"
-
-    var id: String { rawValue }
-    
-    var title: LocalizedStringKey {
-            switch self {
-            case .general: return "General"
-            case .dashboard: return "Dashboard"
-            case .charging: return "Charging"
-            case .advanced: return "Advanced"
-            }
-    }
-
-    var icon: String {
-        switch self {
-        case .general:
-            return "gearshape"
-        case .dashboard:
-            return "chart.xyaxis.line"
-        case .charging:
-            return "battery.100.bolt"
-        case .advanced:
-            return "slider.horizontal.3"
-        }
-    }
-}
-
 struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .general
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     private let capabilities: DeviceCapabilities
-
+    private let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
     init(capabilities: DeviceCapabilities) {
         self.capabilities = capabilities
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             List(SettingsTab.allCases, selection: $selectedTab) { tab in
-                Label {
-                    Text(tab.title)
-                } icon: {
-                    Image(systemName: tab.icon)
-                }
+                SettingsSidebarRow(tab: tab, isSelected: selectedTab == tab)
                 .tag(tab)
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 180, max: 200)
-            .listStyle(.sidebar)
+            }.safeAreaInset(edge: .bottom, content: {
+                VStack {
+                    Text("Stasis")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("Version: \(version)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(.bottom , 8)
+                }
+            })
+            .navigationSplitViewColumnWidth(190)
+            .listStyle(.automatic)
+            .padding(.top, SettingsLayout.sidebarTopPadding)
+            .tint(.gray)
         } detail: {
             Group {
                 switch selectedTab {
@@ -66,9 +44,28 @@ struct SettingsView: View {
                     AdvancedSettingsView()
                 }
             }
-            .navigationTitle(selectedTab.title)
         }
-        .frame(minWidth: 700, minHeight: 450)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    toggleSidebar()
+                } label: {
+                    Image(systemName: "sidebar.left")
+                        .imageScale(.large)
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.regular)
+            }
+        }
+        .frame(minWidth: 760, minHeight: 560)
+    }
+
+
+    private func toggleSidebar() {
+        withAnimation {
+            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+        }
     }
 }
 

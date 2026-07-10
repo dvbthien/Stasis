@@ -4,9 +4,6 @@
     "%lld%%" : {
       "shouldTranslate" : false
     },
-    "%lld°C" : {
-      "shouldTranslate" : false
-    },
     "Adapter" : {
       "localizations" : {
         "de" : {
@@ -264,6 +261,9 @@
       }
     },
     "Battery & Power Adapter" : {
+
+    },
+    "Battery condition details shown alongside current status." : {
 
     },
     "Battery Health" : {
@@ -619,47 +619,6 @@
         }
       }
     },
-    "Charge management is not supported on this device." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Lademanagement wird auf diesem Gerät nicht unterstützt."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La gestión de carga no es compatible con este dispositivo."
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La gestión de carga no es compatible con este dispositivo."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このデバイスでは充電管理はサポートされていません。"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quản lý sạc không được hỗ trợ trên thiết bị này."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这台设备不支持充电管理。"
-          }
-        }
-      }
-    },
     "Charge management is unavailable on this Mac." : {
 
     },
@@ -943,7 +902,13 @@
         }
       }
     },
+    "Choose which live battery and power metrics appear in the menu bar dropdown." : {
+
+    },
     "Control how Stasis manages memory." : {
+
+    },
+    "Control how Stasis starts, appears in the menu bar, and sends notifications." : {
 
     },
     "Control when Stasis sends you notifications." : {
@@ -1269,46 +1234,8 @@
         }
       }
     },
-    "Failed to install charging helper" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ladehelfer konnte nicht installiert werden"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Error al instalar el asistente de carga"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Error al instalar el asistente de carga"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "充電ヘルパーのインストールに失敗しました"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể cài đặt công cụ hỗ trợ sạc"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "充电助手安装失败"
-          }
-        }
-      }
+    "Fine-tune battery readings and maintenance behavior." : {
+
     },
     "Force Discharge" : {
       "localizations" : {
@@ -1439,6 +1366,9 @@
           }
         }
       }
+    },
+    "Hardware percentage can differ from the calibrated value macOS shows in the battery menu." : {
+
     },
     "Health" : {
       "localizations" : {
@@ -1786,6 +1716,9 @@
         }
       }
     },
+    "Manage charging, battery protection, and MagSafe LED behavior." : {
+
+    },
     "Manage MagSafe LED" : {
       "localizations" : {
         "de" : {
@@ -1962,47 +1895,6 @@
         }
       }
     },
-    "Ok" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ok"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ok"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ok"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đồng ý"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
-          }
-        }
-      }
-    },
     "Open Login Items" : {
 
     },
@@ -2171,6 +2063,9 @@
           }
         }
       }
+    },
+    "Power flow and adapter metrics shown in the menu dropdown." : {
+
     },
     "Power source" : {
       "localizations" : {
@@ -2446,46 +2341,6 @@
     "Stasis can still monitor battery status, but this hardware does not expose charging or adapter controls." : {
 
     },
-    "Stasis Settings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stasis-Einstellungen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajustes de Stasis"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajustes de Stasis"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stasisの設定"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cài đặt Stasis"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stasis 设置"
-          }
-        }
-      }
-    },
     "Status" : {
       "localizations" : {
         "de" : {
@@ -2732,45 +2587,8 @@
         }
       }
     },
-    "Visuals" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Darstellung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Visuales"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Visuales"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "表示"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trực quan dòng điện"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视觉图"
-          }
-        }
-      }
+    "Use this only if you prefer raw battery readings." : {
+
     }
   },
   "version" : "1.1"
