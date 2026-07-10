@@ -54,8 +54,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let hostingController = NSHostingController(rootView: settingsView)
 
         let settingsWindow = NSWindow(contentViewController: hostingController)
-        settingsWindow.title = String(localized: "Stasis Settings")
-        settingsWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        settingsWindow.title = ""
+        settingsWindow.styleMask = [.titled, .closable, .miniaturizable]
+        settingsWindow.styleMask.insert(.fullSizeContentView)
+        settingsWindow.titleVisibility = .hidden
+        settingsWindow.titlebarAppearsTransparent = true
+        settingsWindow.isMovableByWindowBackground = true
         settingsWindow.center()
         settingsWindow.setFrameAutosaveName("SettingsWindow")
         settingsWindow.isReleasedWhenClosed = false
