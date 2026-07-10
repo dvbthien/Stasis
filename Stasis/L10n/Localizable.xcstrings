@@ -2200,7 +2200,7 @@
     "Reconnect" : {
 
     },
-    "Restart on Close" : {
+    "Restart the app when Settings closes" : {
 
     },
     "Retry" : {
@@ -2334,6 +2334,9 @@
           }
         }
       }
+    },
+    "Stasis" : {
+
     },
     "Stasis can still manage charging, but this Mac does not expose MagSafe LED controls." : {
 
@@ -2588,6 +2591,9 @@
       }
     },
     "Use this only if you prefer raw battery readings." : {
+
+    },
+    "Version: %@" : {
 
     }
   },
