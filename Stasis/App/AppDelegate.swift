@@ -110,6 +110,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        settingsWindowController.cancelPendingRestart()
         settingsObservation?.cancel()
         settingsObservation = nil
         adapterObservation?.cancel()

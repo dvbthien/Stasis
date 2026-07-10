@@ -943,6 +943,9 @@
         }
       }
     },
+    "Control how Stasis manages memory." : {
+
+    },
     "Control when Stasis sends you notifications." : {
       "localizations" : {
         "de" : {
@@ -1823,6 +1826,9 @@
         }
       }
     },
+    "Memory Management" : {
+
+    },
     "Menu Bar Icon" : {
       "localizations" : {
         "de" : {
@@ -2297,6 +2303,9 @@
       }
     },
     "Reconnect" : {
+
+    },
+    "Restart on Close" : {
 
     },
     "Retry" : {
