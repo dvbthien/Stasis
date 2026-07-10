@@ -9,7 +9,8 @@ struct ChargingSleepPreventionSection: View {
     } header: {
       SettingsSectionHeader(
         "Sleep Prevention",
-        message: "Prevent your Mac from sleeping while charging towards the charge limit. Sleep is re-enabled once the limit is reached or the adapter is disconnected."
+        message:
+          "Prevent your Mac from sleeping while charging towards the charge limit. Sleep is re-enabled once the limit is reached or the adapter is disconnected."
       )
     }
   }

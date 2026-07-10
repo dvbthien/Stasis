@@ -35,7 +35,8 @@ struct ChargingSailingModeSection: View {
     } header: {
       SettingsSectionHeader(
         "Sailing Mode",
-        message: "Automatically resume charging when the battery drops below the threshold relative to your charge limit."
+        message:
+          "Automatically resume charging when the battery drops below the threshold relative to your charge limit."
       )
     }
   }

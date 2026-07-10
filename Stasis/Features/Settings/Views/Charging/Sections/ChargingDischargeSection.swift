@@ -18,7 +18,8 @@ struct ChargingDischargeSection: View {
     } header: {
       SettingsSectionHeader(
         "Discharge",
-        message: "Discharge the battery to your charge limit when plugged in above the target level."
+        message:
+          "Discharge the battery to your charge limit when plugged in above the target level."
       )
     }
   }
