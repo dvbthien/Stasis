@@ -1,3 +1,4 @@
+import Foundation
 import SMCKit
 
 public enum MagSafeLEDState: UInt8, Codable, Sendable {
@@ -9,38 +10,75 @@ public enum MagSafeLEDState: UInt8, Codable, Sendable {
     case blinkOrangeFast = 7
 }
 
-public enum SMCAdapterError: Error {
+public enum SMCAdapterError: Error, Equatable, Sendable {
+    case powerControlNotSupported
     case magSafeNotSupported
     case unknownLEDState(UInt8)
+    case invalidDataLength(key: String, expected: Int, actual: Int)
 }
 
-public struct AdapterCapabilities: Codable, Sendable {
+public struct AdapterCapabilities: Codable, Equatable, Sendable {
+    public let powerControl: Bool
     public let magSafeControl: Bool
 }
 
 /*
-* Based on:
-* https://github.com/mhaeuser/Battery-Toolkit/blob/ed3adf103abfdad53223ce6f0a764ae7163c385b/Libraries/SMCComm%2BMagSafe.swift
-* https://github.com/acidanthera/VirtualSMC/blob/55b89a23f51beda82581dbab795615838a3e6e56/Docs/SMCSensorKeys.txt
-*/
+ * Adapter priority and disable values are ported from batt:
+ * CH0I -> CH0J -> CHIE, with 0x01 for CH0I/CH0J and 0x08 for CHIE.
+ */
 public struct SMCAdapter: Sendable {
     public let capabilities: AdapterCapabilities
 
-    private let hasACLC: Bool
+    private let transport: any SMCTransport
+    private let powerKey: SMCControlKey?
+    private let hasMagSafeLEDKey: Bool
 
     public static func probe() throws -> SMCAdapter {
-        let hasACLC = try SMCKit.shared.isKeyFound("ACLC")
-
-        let capabilities = AdapterCapabilities(
-            magSafeControl: hasACLC
-        )
-
-        return SMCAdapter(capabilities: capabilities, hasACLC: hasACLC)
+        try probe(using: SMCKitTransport())
     }
 
-    private init(capabilities: AdapterCapabilities, hasACLC: Bool) {
+    static func probe(using transport: any SMCTransport) throws -> SMCAdapter {
+        let powerKey = try firstUsablePowerKey(using: transport)
+        let hasMagSafeLEDKey = try SMCChargeControlProbe.isUsable(
+            .magSafeLED,
+            expectedSize: 1,
+            using: transport
+        )
+
+        return SMCAdapter(
+            capabilities: AdapterCapabilities(
+                powerControl: powerKey != nil,
+                magSafeControl: hasMagSafeLEDKey
+            ),
+            transport: transport,
+            powerKey: powerKey,
+            hasMagSafeLEDKey: hasMagSafeLEDKey
+        )
+    }
+
+    private static func firstUsablePowerKey(
+        using transport: any SMCTransport
+    ) throws -> SMCControlKey? {
+        for key in [
+            SMCControlKey.adapterPrimary,
+            .adapterSecondary,
+            .tahoeAdapter,
+        ] where try SMCChargeControlProbe.isUsable(key, expectedSize: 1, using: transport) {
+            return key
+        }
+        return nil
+    }
+
+    private init(
+        capabilities: AdapterCapabilities,
+        transport: any SMCTransport,
+        powerKey: SMCControlKey?,
+        hasMagSafeLEDKey: Bool
+    ) {
         self.capabilities = capabilities
-        self.hasACLC = hasACLC
+        self.transport = transport
+        self.powerKey = powerKey
+        self.hasMagSafeLEDKey = hasMagSafeLEDKey
     }
 
     public static func getVoltage() throws -> Double {
@@ -51,10 +89,29 @@ public struct SMCAdapter: Sendable {
         Double(try SMCKit.shared.read("ID0R") as Float)
     }
 
-    public func getMagSafeLEDState() throws -> MagSafeLEDState {
-        guard hasACLC else { throw SMCAdapterError.magSafeNotSupported }
+    public func getPowerEnabled() throws -> Bool {
+        guard let powerKey else { throw SMCAdapterError.powerControlNotSupported }
+        let data = try read(powerKey, expectedSize: 1)
+        return data[data.startIndex] == 0x00
+    }
 
-        let raw: UInt8 = try SMCKit.shared.read("ACLC")
+    public func setPowerEnabled(_ enabled: Bool) throws {
+        guard let powerKey else { throw SMCAdapterError.powerControlNotSupported }
+        let disabledValue: UInt8 = powerKey == .tahoeAdapter ? 0x08 : 0x01
+        try transport.write(Data([enabled ? 0x00 : disabledValue]), to: powerKey)
+    }
+
+    @discardableResult
+    public func ensurePowerEnabled(_ enabled: Bool) throws -> Bool {
+        guard try getPowerEnabled() != enabled else { return false }
+        try setPowerEnabled(enabled)
+        return true
+    }
+
+    public func getMagSafeLEDState() throws -> MagSafeLEDState {
+        guard hasMagSafeLEDKey else { throw SMCAdapterError.magSafeNotSupported }
+        let data = try read(.magSafeLED, expectedSize: 1)
+        let raw = data[data.startIndex]
         guard let state = MagSafeLEDState(rawValue: raw) else {
             throw SMCAdapterError.unknownLEDState(raw)
         }
@@ -62,8 +119,19 @@ public struct SMCAdapter: Sendable {
     }
 
     public func setMagSafeLEDState(_ state: MagSafeLEDState) throws {
-        guard hasACLC else { throw SMCAdapterError.magSafeNotSupported }
+        guard hasMagSafeLEDKey else { throw SMCAdapterError.magSafeNotSupported }
+        try transport.write(Data([state.rawValue]), to: .magSafeLED)
+    }
 
-        try SMCKit.shared.write("ACLC", state.rawValue)
+    private func read(_ key: SMCControlKey, expectedSize: Int) throws -> Data {
+        let data = try transport.read(key)
+        guard data.count == expectedSize else {
+            throw SMCAdapterError.invalidDataLength(
+                key: key.rawValue,
+                expected: expectedSize,
+                actual: data.count
+            )
+        }
+        return data
     }
 }

@@ -1,55 +1,78 @@
 import Foundation
 import SMCKit
 
-public enum SMCBatteryError: Error, Sendable {
+public enum SMCBatteryError: Error, Equatable, Sendable {
     case unsupportedCapability
+    case wrongChargeControlMode(required: SMCChargeControlMode, actual: SMCChargeControlMode)
+    case invalidDataLength(key: String, expected: Int, actual: Int)
+    case invalidFirmwareLimits(lower: Int, upper: Int)
 }
 
-public struct BatteryCapabilities: Codable, Sendable {
+public struct BatteryCapabilities: Codable, Equatable, Sendable {
+    public let chargeControlMode: SMCChargeControlMode
     public let inhibitChargeControl: Bool
-    public let forceDischargeControl: Bool
+    public let firmwareChargeLimitControl: Bool
+}
+
+private enum LegacyChargingBackend: Sendable {
+    case pairedKeys
+    case tahoeKey
 }
 
 /*
- * Based on:
- * https://github.com/AsahiLinux/linux/blob/79a307df1e18f144610742ac9ee60080c3983875/drivers/power/supply/macsmc-power.c
- * https://github.com/mhaeuser/Battery-Toolkit/blob/ed3adf103abfdad53223ce6f0a764ae7163c385b/Libraries/SMCComm%2BPower.swift
- * https://github.com/acidanthera/VirtualSMC/blob/55b89a23f51beda82581dbab795615838a3e6e56/Docs/SMCSensorKeys.txt
+ * Charge-control behavior is ported from batt's macOS 27 support branch.
+ * Mode selection is based only on validated SMC key sizes; firmware keys take
+ * precedence when both firmware and legacy key families are exposed.
  */
 public struct SMCBattery: Sendable {
     public let capabilities: BatteryCapabilities
 
-    private let hasCH0C: Bool
-    private let hasCHTE: Bool
-    private let hasCH0I: Bool
-    private let hasCHIE: Bool
+    let transport: any SMCTransport
+    private let legacyBackend: LegacyChargingBackend?
 
     public static func probe() throws -> SMCBattery {
-        let hasCH0C = try SMCKit.shared.isKeyFound("CH0C")
-        let hasCHTE = try SMCKit.shared.isKeyFound("CHTE")
-        let hasCH0I = try SMCKit.shared.isKeyFound("CH0I")
-        let hasCHIE = try SMCKit.shared.isKeyFound("CHIE")
+        try probe(using: SMCKitTransport())
+    }
 
-        let capabilities = BatteryCapabilities(
-            inhibitChargeControl: hasCH0C || hasCHTE,
-            forceDischargeControl: hasCH0I || hasCHIE
-        )
+    static func probe(using transport: any SMCTransport) throws -> SMCBattery {
+        let mode = try SMCChargeControlProbe.mode(using: transport)
+        let backend: LegacyChargingBackend?
+        if mode == .legacy {
+            let hasPairedLegacyKeys =
+                try SMCChargeControlProbe.isUsable(
+                    .legacyChargingPrimary,
+                    expectedSize: 1,
+                    using: transport
+                )
+                && SMCChargeControlProbe.isUsable(
+                    .legacyChargingSecondary,
+                    expectedSize: 1,
+                    using: transport
+                )
+            backend = hasPairedLegacyKeys ? .pairedKeys : .tahoeKey
+        } else {
+            backend = nil
+        }
 
         return SMCBattery(
-            capabilities: capabilities,
-            hasCH0C: hasCH0C,
-            hasCHTE: hasCHTE,
-            hasCH0I: hasCH0I,
-            hasCHIE: hasCHIE
+            capabilities: BatteryCapabilities(
+                chargeControlMode: mode,
+                inhibitChargeControl: mode == .legacy,
+                firmwareChargeLimitControl: mode == .firmware
+            ),
+            transport: transport,
+            legacyBackend: backend
         )
     }
-    
-    private init(capabilities: BatteryCapabilities, hasCH0C: Bool, hasCHTE: Bool, hasCH0I: Bool, hasCHIE: Bool) {
+
+    private init(
+        capabilities: BatteryCapabilities,
+        transport: any SMCTransport,
+        legacyBackend: LegacyChargingBackend?
+    ) {
         self.capabilities = capabilities
-        self.hasCH0C = hasCH0C
-        self.hasCHTE = hasCHTE
-        self.hasCH0I = hasCH0I
-        self.hasCHIE = hasCHIE
+        self.transport = transport
+        self.legacyBackend = legacyBackend
     }
 
     public static func getVoltage() throws -> Double {
@@ -61,73 +84,71 @@ public struct SMCBattery: Sendable {
     }
 
     public func getChargingInhibited() throws -> Bool {
-        guard capabilities.inhibitChargeControl else { throw SMCBatteryError.unsupportedCapability }
-
-        if hasCHTE {
-            let value: UInt32 = try SMCKit.shared.read("CHTE")
-            return value != 0
-        } else {
-            let value: UInt8 = try SMCKit.shared.read("CH0C")
-            return value != 0
-        }
+        try !getChargingEnabled()
     }
 
     public func setChargingInhibited(_ inhibited: Bool) throws {
-        guard capabilities.inhibitChargeControl else { throw SMCBatteryError.unsupportedCapability }
+        try setChargingEnabled(!inhibited)
+    }
 
-        if hasCHTE {
-            if !inhibited && hasCH0I {
-                try SMCKit.shared.write("CH0I", UInt8(0))
-            }
-            let value: UInt32 = inhibited ? 1 : 0
-            try SMCKit.shared.write("CHTE", value)
-        } else {
-            if !inhibited && hasCH0I {
-                try SMCKit.shared.write("CH0I", UInt8(0))
-            }
-            let value: UInt8 = inhibited ? 1 : 0
-            try SMCKit.shared.write("CH0C", value)
+    public func getChargingEnabled() throws -> Bool {
+        try requireMode(.legacy)
+
+        switch legacyBackend {
+        case .pairedKeys:
+            return try read(.legacyChargingPrimary, expectedSize: 1) == Data([0x00])
+        case .tahoeKey:
+            return try read(.tahoeCharging, expectedSize: 4) == Data([0x00, 0x00, 0x00, 0x00])
+        case nil:
+            throw SMCBatteryError.unsupportedCapability
         }
     }
 
-    public func getForceDischarging() throws -> Bool {
-        guard capabilities.forceDischargeControl else {
-            throw SMCBatteryError.unsupportedCapability
-        }
+    public func setChargingEnabled(_ enabled: Bool) throws {
+        try requireMode(.legacy)
 
-        if hasCHIE {
-            let data = try SMCKit.shared.readData("CHIE")
-            return data.first == 0x08
-        } else {
-            let value: UInt8 = try SMCKit.shared.read("CH0I")
-            return value != 0
+        switch legacyBackend {
+        case .pairedKeys:
+            let value = Data([enabled ? 0x00 : 0x02])
+            try transport.write(value, to: .legacyChargingPrimary)
+            try transport.write(value, to: .legacyChargingSecondary)
+        case .tahoeKey:
+            try transport.write(
+                Data([enabled ? 0x00 : 0x01, 0x00, 0x00, 0x00]),
+                to: .tahoeCharging
+            )
+        case nil:
+            throw SMCBatteryError.unsupportedCapability
         }
     }
 
-    public func setForceDischarging(_ enabled: Bool) throws {
-        guard capabilities.forceDischargeControl else {
+    public func resetChargeControl() throws {
+        switch capabilities.chargeControlMode {
+        case .legacy:
+            try setChargingEnabled(true)
+        case .firmware:
+            _ = try ensureFirmwareChargeLimitDisabled()
+        case .unsupported:
             throw SMCBatteryError.unsupportedCapability
         }
+    }
 
-        if enabled {
-            // Clear charging inhibit before enabling force discharge
-            if hasCHTE {
-                try SMCKit.shared.write("CHTE", UInt32(0))
-            } else if hasCH0C {
-                try SMCKit.shared.write("CH0C", UInt8(0))
-            }
-
-            if hasCHIE {
-                try SMCKit.shared.writeData("CHIE", Data([0x08]))
-            } else {
-                try SMCKit.shared.write("CH0I", UInt8(1))
-            }
-        } else {
-            if hasCHIE {
-                try SMCKit.shared.writeData("CHIE", Data([0x00]))
-            } else {
-                try SMCKit.shared.write("CH0I", UInt8(0))
-            }
+    func requireMode(_ required: SMCChargeControlMode) throws {
+        let actual = capabilities.chargeControlMode
+        guard actual == required else {
+            throw SMCBatteryError.wrongChargeControlMode(required: required, actual: actual)
         }
+    }
+
+    func read(_ key: SMCControlKey, expectedSize: Int) throws -> Data {
+        let data = try transport.read(key)
+        guard data.count == expectedSize else {
+            throw SMCBatteryError.invalidDataLength(
+                key: key.rawValue,
+                expected: expectedSize,
+                actual: data.count
+            )
+        }
+        return data
     }
 }

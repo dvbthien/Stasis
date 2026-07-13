@@ -10,7 +10,7 @@ import smc_power
 /// `nil` for any field means "don't touch this" rather than "turn it off" —
 /// each field is applied independently by `ChargingCoordinator`, only when the
 /// device actually supports controlling it.
-struct ChargingDecision {
+struct ChargingDecision: Equatable, Sendable {
     var desiredCharging: Bool?
     var desiredAdapter: Bool?
     var desiredLED: MagSafeLEDState?

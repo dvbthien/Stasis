@@ -19,7 +19,7 @@ final class ChargingHelper: NSObject, ChargingHelperProtocol {
     self.adapter = adapter
     super.init()
     logger.info(
-      "Initialized (charging=\(battery.capabilities.inhibitChargeControl), discharge=\(battery.capabilities.forceDischargeControl), magSafe=\(adapter.capabilities.magSafeControl))"
+      "Initialized (mode=\(battery.capabilities.chargeControlMode.rawValue), charging=\(battery.capabilities.inhibitChargeControl), adapter=\(adapter.capabilities.powerControl), magSafe=\(adapter.capabilities.magSafeControl))"
     )
   }
 
@@ -48,14 +48,12 @@ final class ChargingHelper: NSObject, ChargingHelperProtocol {
 
   func manageExternalPower(enabled: Bool, reply: @escaping @Sendable (Bool, String?) -> Void) {
     do {
-      guard battery.capabilities.forceDischargeControl else {
+      guard adapter.capabilities.powerControl else {
         reply(false, "Adapter control is not supported on this device")
         return
       }
-      let currentlyDischarging = try battery.getForceDischarging()
-      if currentlyDischarging != !enabled {
-        try battery.setForceDischarging(!enabled)
-        logger.debug("SMC set force discharging to: \(!enabled)")
+      if try adapter.ensurePowerEnabled(enabled) {
+        logger.debug("SMC set adapter power enabled to: \(enabled)")
       }
       reply(true, nil)
     } catch {
@@ -91,8 +89,8 @@ final class ChargingHelper: NSObject, ChargingHelperProtocol {
       if battery.capabilities.inhibitChargeControl {
         try battery.setChargingInhibited(false)
       }
-      if battery.capabilities.forceDischargeControl {
-        try battery.setForceDischarging(false)
+      if adapter.capabilities.powerControl {
+        try adapter.setPowerEnabled(true)
       }
       if adapter.capabilities.magSafeControl {
         try adapter.setMagSafeLEDState(.reset)

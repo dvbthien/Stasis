@@ -65,7 +65,7 @@ public struct DeviceCapabilities: Sendable {
     ) -> DeviceCapabilities {
         DeviceCapabilities(
             chargingControl: battery.inhibitChargeControl,
-            adapterControl: battery.forceDischargeControl,
+            adapterControl: adapter.powerControl,
             hasMagSafe: adapter.magSafeControl,
             magsafeLEDControl: adapter.magSafeControl
         )

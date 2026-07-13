@@ -1,16 +1,11 @@
-import Defaults
 import smc_power
 
-/// A single, consistent read of every `Defaults` value the charging policy
-/// needs for one evaluation pass.
+/// Plain policy input for one evaluation pass.
 ///
-/// `ChargingCoordinator.evaluate` used to read `Defaults[...]` directly from
-/// inside deeply nested conditionals — over a dozen call sites scattered
-/// through one function. Reading everything up front, once, into a plain
-/// struct means the policy functions take a single, easy-to-pass parameter
-/// instead of reaching back into global state, which is also what makes
-/// them straightforward to unit test in isolation.
-struct ChargingSettingsSnapshot {
+/// This type deliberately has no dependency on app `Defaults`. The current app
+/// runtime builds `DaemonSettings` through an app-only bridge, while the future
+/// daemon can supply its canonical persisted settings directly.
+struct ChargingSettingsSnapshot: Equatable, Sendable {
     let chargeLimit: Int
     let useHardwarePercentage: Bool
 
@@ -26,25 +21,23 @@ struct ChargingSettingsSnapshot {
 
     let disableSleepUntilChargeLimit: Bool
 
-    /// - Parameter chargeLimitOverrideActive: when the user has temporarily
-    ///   overridden the charge limit to top up to 100%, owned by
-    ///   `ChargingCoordinator` rather than `Defaults` since it's a transient,
-    ///   in-memory toggle rather than a persisted setting.
-    init(chargeLimitOverrideActive: Bool) {
-        chargeLimit = chargeLimitOverrideActive ? 100 : Defaults[.chargeLimit]
-        useHardwarePercentage = Defaults[.useHardwarePercentage]
+    init(settings: DaemonSettings, chargeLimitOverrideActive: Bool) {
+        chargeLimit = chargeLimitOverrideActive ? 100 : settings.chargeLimit
+        useHardwarePercentage = settings.useHardwarePercentage
 
-        sailingModeEnabled = Defaults[.sailingMode]
-        sailingModeLimit = Defaults[.sailingModeLimit]
-        automaticDischarge = Defaults[.automaticDischarge]
+        sailingModeEnabled = settings.sailingModeEnabled
+        sailingModeLimit = settings.sailingDelta
+        automaticDischarge = settings.automaticDischarge
 
-        manageMagSafeLED = Defaults[.manageMagSafeLED]
+        manageMagSafeLED = settings.manageMagSafeLED
 
-        heatProtectionEnabled = Defaults[.enableHeatProtectionMode]
-        heatProtectionLimit = Defaults[.heatProtectionLimit]
-        heatProtectionMagSafeLEDState = Defaults[.heatProtectionMagSafeLEDState]
+        heatProtectionEnabled = settings.heatProtectionEnabled
+        heatProtectionLimit = settings.heatProtectionLimit
+        heatProtectionMagSafeLEDState =
+            MagSafeLEDState(rawValue: settings.heatProtectionLEDStateRawValue)
+            ?? .blinkOrangeSlow
 
-        disableSleepUntilChargeLimit = Defaults[.disableSleepUntilChargeLimit]
+        disableSleepUntilChargeLimit = settings.preventSleepUntilLimit
     }
 
     /// The percentage to evaluate policy against — hardware or

@@ -95,7 +95,10 @@ class ChargingCoordinator {
       stateWasCleared = true
     }
 
-    let settings = ChargingSettingsSnapshot(chargeLimitOverrideActive: chargeLimitOverrideActive)
+    let settings = ChargingSettingsSnapshot(
+      settings: .currentAppDefaults,
+      chargeLimitOverrideActive: chargeLimitOverrideActive
+    )
 
     var decision = ChargeLimitPolicy.evaluate(
       controlState: controlState,
