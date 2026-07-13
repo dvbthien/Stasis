@@ -1,22 +1,49 @@
+import Foundation
 import smc_power
 
-/// Decides what charging/adapter/LED state the battery should be in, based
-/// purely on where the battery percentage sits relative to the charge limit
-/// (and, below the limit, whether sailing mode keeps it there).
-///
-/// This is the core of what used to be the ~90-line conditional chain in
-/// `ChargingCoordinator.evaluate`. It's pulled out as its own type — a *policy*,
-/// in the same sense as `HeatProtectionPolicy` and `ForceDischargePolicy` —
-/// so each rule lives in one place, reads top-to-bottom as "which zone is
-/// the battery in, and what does that zone mean", and can be reasoned about
-/// (or tested) without needing a running `ChargingCoordinator`.
-///
-/// The only piece of mutable state involved is charge-limit hysteresis
-/// (`hasReachedChargeLimit`), which is why it's threaded through explicitly
-/// as `inout` rather than hidden as a stored property — the mutation is
-/// visible at every call site instead of being an implicit side effect.
+/// Plain policy input. It deliberately has no dependency on app defaults.
+struct ChargingSettingsSnapshot: Equatable, Sendable {
+    let chargeLimit: Int
+    let useHardwarePercentage: Bool
+    let sailingModeEnabled: Bool
+    let sailingModeLimit: Int
+    let automaticDischarge: Bool
+    let manageMagSafeLED: Bool
+    let heatProtectionEnabled: Bool
+    let heatProtectionLimit: Int
+    let heatProtectionMagSafeLEDState: MagSafeLEDState
+    let disableSleepUntilChargeLimit: Bool
+
+    init(settings: DaemonSettings, chargeLimitOverrideActive: Bool) {
+        chargeLimit = chargeLimitOverrideActive ? 100 : settings.chargeLimit
+        useHardwarePercentage = settings.useHardwarePercentage
+        sailingModeEnabled = settings.sailingModeEnabled
+        sailingModeLimit = settings.sailingDelta
+        automaticDischarge = settings.automaticDischarge
+        manageMagSafeLED = settings.manageMagSafeLED
+        heatProtectionEnabled = settings.heatProtectionEnabled
+        heatProtectionLimit = settings.heatProtectionLimit
+        heatProtectionMagSafeLEDState =
+            MagSafeLEDState(rawValue: settings.heatProtectionLEDStateRawValue)
+            ?? .blinkOrangeSlow
+        disableSleepUntilChargeLimit = settings.preventSleepUntilLimit
+    }
+
+    func batteryPercentage(for controlState: BatteryControlState) -> Int {
+        useHardwarePercentage
+            ? controlState.hardwareBatteryPercentage
+            : controlState.batteryPercentage
+    }
+}
+
+struct ChargingDecision: Equatable, Sendable {
+    var desiredCharging: Bool?
+    var desiredAdapter: Bool?
+    var desiredLED: MagSafeLEDState?
+    var reason: String?
+}
+
 enum ChargeLimitPolicy {
-    /// Where the battery percentage sits relative to the charge limit.
     private enum Zone {
         case aboveLimit
         case atLimit
@@ -29,31 +56,27 @@ enum ChargeLimitPolicy {
         stateWasCleared: Bool,
         hasReachedChargeLimit: inout Bool
     ) -> ChargingDecision {
-        let batteryPercentage = settings.batteryPercentage(for: controlState)
-
+        let percentage = settings.batteryPercentage(for: controlState)
         primeHysteresisIfNeeded(
             stateWasCleared: stateWasCleared,
-            batteryPercentage: batteryPercentage,
+            batteryPercentage: percentage,
             settings: settings,
             hasReachedChargeLimit: &hasReachedChargeLimit
         )
 
-        switch zone(batteryPercentage: batteryPercentage, chargeLimit: settings.chargeLimit) {
+        switch zone(batteryPercentage: percentage, chargeLimit: settings.chargeLimit) {
         case .aboveLimit:
             hasReachedChargeLimit = true
             return decisionAtOrAboveLimit(isAboveLimit: true, settings: settings)
-
         case .atLimit:
             hasReachedChargeLimit = true
             return decisionAtOrAboveLimit(isAboveLimit: false, settings: settings)
-
         case .belowLimit where settings.sailingModeEnabled:
             return sailingModeDecision(
-                batteryPercentage: batteryPercentage,
+                batteryPercentage: percentage,
                 settings: settings,
                 hasReachedChargeLimit: &hasReachedChargeLimit
             )
-
         case .belowLimit:
             return chargingTowardLimitDecision(
                 settings: settings,
@@ -68,9 +91,6 @@ enum ChargeLimitPolicy {
         return .belowLimit
     }
 
-    /// If state was just cleared (adapter reconnected, management just
-    /// turned on) while already within the sailing range, treat the limit
-    /// as already reached instead of charging straight to 100% first.
     private static func primeHysteresisIfNeeded(
         stateWasCleared: Bool,
         batteryPercentage: Int,
@@ -78,14 +98,11 @@ enum ChargeLimitPolicy {
         hasReachedChargeLimit: inout Bool
     ) {
         guard stateWasCleared, settings.sailingModeEnabled else { return }
-        let sailingThreshold = settings.chargeLimit - settings.sailingModeLimit
-        if batteryPercentage >= sailingThreshold {
+        if batteryPercentage >= settings.chargeLimit - settings.sailingModeLimit {
             hasReachedChargeLimit = true
         }
     }
 
-    /// Battery is at or above the limit: stop charging either way. Only the
-    /// adapter behavior and the reported reason differ between the two.
     private static func decisionAtOrAboveLimit(
         isAboveLimit: Bool,
         settings: ChargingSettingsSnapshot
@@ -100,18 +117,14 @@ enum ChargeLimitPolicy {
         )
     }
 
-    /// Battery is below the limit with sailing mode on: hold below the
-    /// limit once it's already been reached once, instead of immediately
-    /// topping back up.
     private static func sailingModeDecision(
         batteryPercentage: Int,
         settings: ChargingSettingsSnapshot,
         hasReachedChargeLimit: inout Bool
     ) -> ChargingDecision {
-        let sailingThreshold = settings.chargeLimit - settings.sailingModeLimit
-        let inSailingRange = batteryPercentage >= sailingThreshold
-
-        if inSailingRange && hasReachedChargeLimit {
+        let threshold = settings.chargeLimit - settings.sailingModeLimit
+        let inSailingRange = batteryPercentage >= threshold
+        if inSailingRange, hasReachedChargeLimit {
             return ChargingDecision(
                 desiredCharging: false,
                 desiredAdapter: true,
@@ -120,23 +133,19 @@ enum ChargeLimitPolicy {
             )
         }
 
-        let droppedOutOfSailingRange = !inSailingRange && hasReachedChargeLimit
+        let droppedOutOfRange = !inSailingRange && hasReachedChargeLimit
         hasReachedChargeLimit = false
-
-        let reason: String =
+        let reason =
             if inSailingRange {
                 "Charging to reach charge limit of \(settings.chargeLimit)%"
-            } else if droppedOutOfSailingRange {
-                "Battery dropped below sailing threshold of \(sailingThreshold)%"
+            } else if droppedOutOfRange {
+                "Battery dropped below sailing threshold of \(threshold)%"
             } else {
                 "Battery is below the charge limit of \(settings.chargeLimit)%"
             }
-
         return chargingTowardLimitDecision(settings: settings, reason: reason)
     }
 
-    /// Shared "charge normally" outcome, used both outside sailing mode and
-    /// when sailing mode decides it's time to top back up.
     private static func chargingTowardLimitDecision(
         settings: ChargingSettingsSnapshot,
         reason: String
@@ -147,5 +156,31 @@ enum ChargeLimitPolicy {
             desiredLED: settings.manageMagSafeLED ? .orange : nil,
             reason: reason
         )
+    }
+}
+
+enum HeatProtectionPolicy {
+    static func apply(
+        to decision: inout ChargingDecision,
+        controlState: BatteryControlState,
+        settings: ChargingSettingsSnapshot
+    ) {
+        guard settings.heatProtectionEnabled,
+              controlState.batteryTemperature > Double(settings.heatProtectionLimit)
+        else { return }
+
+        decision.desiredCharging = false
+        decision.reason = "Battery temperature exceeds \(settings.heatProtectionLimit)°C"
+        if settings.manageMagSafeLED {
+            decision.desiredLED = settings.heatProtectionMagSafeLEDState
+        }
+    }
+}
+
+enum ForceDischargePolicy {
+    static func apply(to decision: inout ChargingDecision, isActive: Bool) {
+        guard isActive else { return }
+        decision.desiredCharging = false
+        decision.desiredAdapter = false
     }
 }

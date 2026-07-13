@@ -11,6 +11,7 @@ actor DaemonRuntimeCoordinator {
     private var telemetryClients: Set<UUID> = []
     private var telemetryTask: Task<Void, Never>?
     private var delayedTelemetryTask: Task<Void, Never>?
+    private var managementEngine: BatteryManagementEngine?
 
     init(
         settingsStore: DaemonSettingsStore,
@@ -28,6 +29,11 @@ actor DaemonRuntimeCoordinator {
         self.delayedTelemetryRefreshDelay = delayedTelemetryRefreshDelay
     }
 
+    func installManagementEngine(_ engine: BatteryManagementEngine) async {
+        managementEngine = engine
+        await engine.start()
+    }
+
     func handlePowerSourceUpdate(_ update: DaemonPowerSourceUpdate) async {
         let adapterConnectionChanged = await stateStore.updatePowerSource(update)
 
@@ -41,6 +47,14 @@ actor DaemonRuntimeCoordinator {
         if update.reason == .interestNotification, adapterConnectionChanged {
             scheduleDelayedTelemetryRefresh()
         }
+
+        let maintainReason: DaemonMaintainReason =
+            switch update.reason {
+            case .initial: .startup
+            case .interestNotification: .powerSource
+            case .wake: .wake
+            }
+        await managementEngine?.request(maintainReason)
     }
 
     func currentSnapshot(refreshHardware: Bool = true) async -> DaemonSnapshot {
@@ -61,6 +75,46 @@ actor DaemonRuntimeCoordinator {
         await sampleTelemetry()
         await publishCurrentSnapshot(refreshHardware: true)
         scheduleDelayedTelemetryRefresh()
+        await managementEngine?.request(.hardwareCommand)
+    }
+
+    /// Refreshes measurements after the engine has already reconciled and
+    /// read hardware state. This deliberately does not enqueue another
+    /// maintain pass, which would feed the engine back into itself.
+    func refreshTelemetryAfterPolicyApply() async {
+        await sampleTelemetry()
+        await publishCurrentSnapshot()
+        scheduleDelayedTelemetryRefresh()
+    }
+
+    func settingsDidChange() async {
+        if let managementEngine {
+            await managementEngine.request(.settings)
+        } else {
+            await publishCurrentSnapshot()
+        }
+    }
+
+    func setChargeLimitOverride(_ enabled: Bool) async throws -> DaemonSnapshot {
+        guard let managementEngine else {
+            throw DaemonErrorPayload(
+                code: .internalFailure,
+                message: "Battery management engine is unavailable"
+            )
+        }
+        try await managementEngine.setChargeLimitOverride(enabled)
+        return await currentSnapshot(refreshHardware: false)
+    }
+
+    func setForceDischarge(_ enabled: Bool) async throws -> DaemonSnapshot {
+        guard let managementEngine else {
+            throw DaemonErrorPayload(
+                code: .internalFailure,
+                message: "Battery management engine is unavailable"
+            )
+        }
+        try await managementEngine.setForceDischarge(enabled)
+        return await currentSnapshot(refreshHardware: false)
     }
 
     func setTelemetryActive(_ active: Bool, for clientID: UUID) async {

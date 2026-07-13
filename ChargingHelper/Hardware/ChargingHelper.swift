@@ -18,7 +18,7 @@ actor ChargingHelper: DaemonHardwareControlling {
     )
   }
 
-  func setChargingEnabled(_ enabled: Bool) throws {
+  func setChargingEnabled(_ enabled: Bool) throws -> Bool {
     guard battery.capabilities.inhibitChargeControl else {
       throw SMCBatteryError.unsupportedCapability
     }
@@ -26,19 +26,23 @@ actor ChargingHelper: DaemonHardwareControlling {
     if currentlyInhibited != !enabled {
       try battery.setChargingInhibited(!enabled)
       logger.debug("SMC set charging enabled to: \(enabled)")
+      return true
     }
+    return false
   }
 
-  func setAdapterEnabled(_ enabled: Bool) throws {
+  func setAdapterEnabled(_ enabled: Bool) throws -> Bool {
     guard adapter.capabilities.powerControl else {
       throw SMCAdapterError.powerControlNotSupported
     }
-    if try adapter.ensurePowerEnabled(enabled) {
+    let changed = try adapter.ensurePowerEnabled(enabled)
+    if changed {
       logger.debug("SMC set adapter power enabled to: \(enabled)")
     }
+    return changed
   }
 
-  func setMagSafeLED(rawValue: UInt8) throws {
+  func setMagSafeLED(rawValue: UInt8) throws -> Bool {
     guard adapter.capabilities.magSafeControl else {
       throw SMCAdapterError.magSafeNotSupported
     }
@@ -49,7 +53,25 @@ actor ChargingHelper: DaemonHardwareControlling {
     if currentState != state {
       try adapter.setMagSafeLEDState(state)
       logger.debug("SMC MagSafe LED set to: \(state.rawValue)")
+      return true
     }
+    return false
+  }
+
+  func ensureFirmwareChargeLimit(lower: Int, upper: Int) throws -> Bool {
+    let changed = try battery.ensureFirmwareChargeLimit(lower: lower, upper: upper)
+    if changed {
+      logger.debug("SMC firmware charge limit set to lower=\(lower) upper=\(upper)")
+    }
+    return changed
+  }
+
+  func ensureFirmwareChargeLimitDisabled() throws -> Bool {
+    let changed = try battery.ensureFirmwareChargeLimitDisabled()
+    if changed {
+      logger.debug("SMC firmware charge limit disabled")
+    }
+    return changed
   }
 
   func readHardwareState() throws -> DaemonHardwareState {
@@ -98,8 +120,8 @@ actor ChargingHelper: DaemonHardwareControlling {
 
   func resetToDefaults() {
     do {
-      if battery.capabilities.inhibitChargeControl {
-        try battery.setChargingEnabled(true)
+      if battery.capabilities.chargeControlMode != .unsupported {
+        try battery.resetChargeControl()
       }
       if adapter.capabilities.powerControl {
         try adapter.setPowerEnabled(true)

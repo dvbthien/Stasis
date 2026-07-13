@@ -24,10 +24,3 @@ struct AdapterMetrics: Equatable {
     var adapterCurrent: Double = 0
     var adapterPower: Double = 0
 }
-
-struct BatteryControlState: Equatable {
-    var batteryPercentage: Int = 0
-    var hardwareBatteryPercentage: Int = 0
-    var adapterConnected: Bool = false
-    var batteryTemperature: Double = 0
-}

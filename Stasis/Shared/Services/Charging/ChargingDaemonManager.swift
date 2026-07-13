@@ -112,6 +112,57 @@ class ChargingDaemonManager {
     }
   }
 
+  func synchronizeChargingSettings(_ settings: DaemonSettings) async throws {
+    let payload = try DaemonPayloadCodec.encode(settings)
+    try await executeCommand("Synchronize daemon charging settings") { [weak self] helper, reply in
+      helper.setSettings(authData: nil, payload: payload) { response, errorMessage in
+        Task { @MainActor in
+          guard let response else {
+            reply(false, errorMessage ?? "Daemon rejected charging settings")
+            return
+          }
+          do {
+            self?.daemonSettingsState = try DaemonPayloadCodec.decode(
+              DaemonSettingsState.self,
+              from: response
+            )
+            reply(true, nil)
+          } catch {
+            reply(false, "Invalid daemon settings response: \(error.localizedDescription)")
+          }
+        }
+      }
+    }
+  }
+
+  func setChargeLimitOverride(_ enabled: Bool) async throws {
+    try await executeCommand("Set charge-limit override") { [weak self] helper, reply in
+      helper.setChargeLimitOverride(enabled: enabled) { response, errorMessage in
+        Task { @MainActor in
+          self?.handleSnapshotCommandResponse(
+            response,
+            errorMessage: errorMessage,
+            reply: reply
+          )
+        }
+      }
+    }
+  }
+
+  func setForceDischarge(_ enabled: Bool) async throws {
+    try await executeCommand("Set force discharge") { [weak self] helper, reply in
+      helper.setForceDischarge(authData: nil, enabled: enabled) { response, errorMessage in
+        Task { @MainActor in
+          self?.handleSnapshotCommandResponse(
+            response,
+            errorMessage: errorMessage,
+            reply: reply
+          )
+        }
+      }
+    }
+  }
+
   func getHelper(errorHandler: @escaping @Sendable (Error) -> Void) -> ChargingDaemonProtocol? {
     if connection == nil {
       connect()
@@ -427,6 +478,23 @@ class ChargingDaemonManager {
       connectionStatus = .connected
     } catch {
       recordRuntimeError(error, while: "Decode daemon snapshot callback")
+    }
+  }
+
+  private func handleSnapshotCommandResponse(
+    _ payload: Data?,
+    errorMessage: String?,
+    reply: @escaping @Sendable (Bool, String?) -> Void
+  ) {
+    guard let payload else {
+      reply(false, errorMessage ?? "Daemon did not return an updated snapshot")
+      return
+    }
+    do {
+      daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
+      reply(true, nil)
+    } catch {
+      reply(false, "Invalid daemon snapshot response: \(error.localizedDescription)")
     }
   }
 }

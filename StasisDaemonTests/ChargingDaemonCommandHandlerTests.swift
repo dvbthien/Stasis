@@ -4,17 +4,17 @@ import XCTest
 final class ChargingDaemonCommandHandlerTests: XCTestCase {
     func testCommandSurfacePersistsCanonicalSettingsAcrossReconnect() async throws {
         let persistence = InMemoryDaemonSettingsPersistence()
-        let first = try makeHandler(persistence: persistence)
+        let first = try await makeHandler(persistence: persistence)
         let legacySettings = settings(chargeLimit: 75)
         let importPayload = try DaemonPayloadCodec.encode(legacySettings)
 
         let imported: DaemonSettingsState = try await requestPayload { reply in
-            first.importLegacySettings(payload: importPayload, reply: reply)
+            first.handler.importLegacySettings(payload: importPayload, reply: reply)
         }
 
-        let reconnected = try makeHandler(persistence: persistence)
+        let reconnected = try await makeHandler(persistence: persistence)
         let fetched: DaemonSettingsState = try await requestPayload { reply in
-            reconnected.getSettings(reply: reply)
+            reconnected.handler.getSettings(reply: reply)
         }
 
         XCTAssertEqual(fetched, imported)
@@ -24,16 +24,16 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
 
     func testInvalidCommandPayloadDoesNotChangeSettings() async throws {
         let persistence = InMemoryDaemonSettingsPersistence()
-        let handler = try makeHandler(persistence: persistence)
+        let fixture = try await makeHandler(persistence: persistence)
         let before: DaemonSettingsState = try await requestPayload { reply in
-            handler.getSettings(reply: reply)
+            fixture.handler.getSettings(reply: reply)
         }
 
         let response = await requestRaw { reply in
-            handler.setSettings(authData: nil, payload: Data([0xFF]), reply: reply)
+            fixture.handler.setSettings(authData: nil, payload: Data([0xFF]), reply: reply)
         }
         let after: DaemonSettingsState = try await requestPayload { reply in
-            handler.getSettings(reply: reply)
+            fixture.handler.getSettings(reply: reply)
         }
 
         XCTAssertNil(response.data)
@@ -43,43 +43,72 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
 
     func testTemporaryCommandsReturnUpdatedSnapshotsWithoutPersistence() async throws {
         let persistence = InMemoryDaemonSettingsPersistence()
-        let handler = try makeHandler(persistence: persistence)
+        let fixture = try await makeHandler(persistence: persistence)
+        let payload = try DaemonPayloadCodec.encode(settings(chargeLimit: 75))
+        let _: DaemonSettingsState = try await requestPayload { reply in
+            fixture.handler.setSettings(authData: nil, payload: payload, reply: reply)
+        }
+        await fixture.runtime.handlePowerSourceUpdate(
+            DaemonPowerSourceUpdate(
+                battery: DaemonBatterySnapshot(displayedPercentage: 60),
+                adapter: DaemonAdapterSnapshot(physicallyConnected: true),
+                reason: .initial
+            )
+        )
 
         let overrideSnapshot: DaemonSnapshot = try await requestPayload { reply in
-            handler.setChargeLimitOverride(enabled: true, reply: reply)
+            fixture.handler.setChargeLimitOverride(enabled: true, reply: reply)
         }
         let forceSnapshot: DaemonSnapshot = try await requestPayload { reply in
-            handler.setForceDischarge(authData: nil, enabled: true, reply: reply)
+            fixture.handler.setForceDischarge(authData: nil, enabled: true, reply: reply)
         }
 
         XCTAssertTrue(overrideSnapshot.policy.chargeLimitOverrideActive)
         XCTAssertFalse(forceSnapshot.policy.chargeLimitOverrideActive)
         XCTAssertTrue(forceSnapshot.policy.forceDischargeActive)
 
-        let relaunched = try makeHandler(persistence: persistence)
+        let relaunched = try await makeHandler(persistence: persistence)
         let relaunchedSnapshot: DaemonSnapshot = try await requestPayload { reply in
-            relaunched.getSnapshot(reply: reply)
+            relaunched.handler.getSnapshot(reply: reply)
         }
         XCTAssertFalse(relaunchedSnapshot.policy.chargeLimitOverrideActive)
         XCTAssertFalse(relaunchedSnapshot.policy.forceDischargeActive)
     }
 
     func testHealthReportsChargeControlMode() async throws {
-        let handler = try makeHandler(
+        let fixture = try await makeHandler(
             persistence: InMemoryDaemonSettingsPersistence()
         )
 
         let health: DaemonHealth = try await requestPayload { reply in
-            handler.checkHealth(reply: reply)
+            fixture.handler.checkHealth(reply: reply)
         }
 
         XCTAssertEqual(health.status, .ready)
         XCTAssertEqual(health.chargeControlMode, .legacy)
     }
 
+    func testConnectionInvalidationDoesNotResetHardware() async throws {
+        let fixture = try await makeHandler(
+            persistence: InMemoryDaemonSettingsPersistence()
+        )
+
+        fixture.handler.connectionInvalidated()
+        try await Task.sleep(for: .milliseconds(20))
+
+        let resetCount = await fixture.hardware.resetCount()
+        let hardwareWriteCount = await fixture.hardware.writeCount()
+        XCTAssertEqual(resetCount, 0)
+        XCTAssertEqual(hardwareWriteCount, 0)
+    }
+
     private func makeHandler(
         persistence: InMemoryDaemonSettingsPersistence
-    ) throws -> ChargingDaemonCommandHandler {
+    ) async throws -> (
+        handler: ChargingDaemonCommandHandler,
+        runtime: DaemonRuntimeCoordinator,
+        hardware: MockDaemonHardwareController
+    ) {
         let capabilities = DaemonCapabilities(
             chargeControlMode: .legacy,
             adapterControl: true,
@@ -101,7 +130,15 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             hardware: hardware,
             clients: clients
         )
-        return ChargingDaemonCommandHandler(
+        let engine = BatteryManagementEngine(
+            capabilities: capabilities,
+            settingsStore: settingsStore,
+            stateStore: stateStore,
+            hardware: hardware,
+            runtime: runtime
+        )
+        await runtime.installManagementEngine(engine)
+        let handler = ChargingDaemonCommandHandler(
             settingsStore: settingsStore,
             stateStore: stateStore,
             runtime: runtime,
@@ -110,6 +147,7 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             daemonVersion: "test",
             clients: clients
         )
+        return (handler, runtime, hardware)
     }
 
     private func settings(chargeLimit: Int) -> DaemonSettings {
@@ -154,9 +192,20 @@ private enum TestCommandError: Error {
 }
 
 private actor MockDaemonHardwareController: DaemonHardwareControlling {
-    func setChargingEnabled(_ enabled: Bool) async throws {}
-    func setAdapterEnabled(_ enabled: Bool) async throws {}
-    func setMagSafeLED(rawValue: UInt8) async throws {}
+    private var resets = 0
+    private var writes = 0
+    func setChargingEnabled(_ enabled: Bool) async throws -> Bool {
+        writes += 1
+        return true
+    }
+    func setAdapterEnabled(_ enabled: Bool) async throws -> Bool {
+        writes += 1
+        return true
+    }
+    func setMagSafeLED(rawValue: UInt8) async throws -> Bool {
+        writes += 1
+        return true
+    }
 
     func readHardwareState() async throws -> DaemonHardwareState {
         DaemonHardwareState(
@@ -170,5 +219,15 @@ private actor MockDaemonHardwareController: DaemonHardwareControlling {
         DaemonTelemetryReading()
     }
 
-    func resetToDefaults() async {}
+    func resetToDefaults() async {
+        resets += 1
+    }
+
+    func resetCount() -> Int {
+        resets
+    }
+
+    func writeCount() -> Int {
+        writes
+    }
 }

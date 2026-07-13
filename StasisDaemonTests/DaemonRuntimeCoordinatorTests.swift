@@ -224,9 +224,9 @@ private actor RuntimeMockHardware: DaemonHardwareControlling {
     private var telemetryReads = 0
     private var hardwareStateReads = 0
 
-    func setChargingEnabled(_ enabled: Bool) async throws {}
-    func setAdapterEnabled(_ enabled: Bool) async throws {}
-    func setMagSafeLED(rawValue: UInt8) async throws {}
+    func setChargingEnabled(_ enabled: Bool) async throws -> Bool { false }
+    func setAdapterEnabled(_ enabled: Bool) async throws -> Bool { false }
+    func setMagSafeLED(rawValue: UInt8) async throws -> Bool { false }
 
     func readHardwareState() async throws -> DaemonHardwareState {
         hardwareStateReads += 1

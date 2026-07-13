@@ -92,11 +92,8 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         enabled: Bool,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        respond(reply: reply) { [stateStore, runtime] in
-            try await stateStore.setChargeLimitOverride(enabled)
-            let snapshot = await runtime.currentSnapshot(refreshHardware: false)
-            await runtime.publishCurrentSnapshot()
-            return snapshot
+        respond(reply: reply) { [runtime] in
+            try await runtime.setChargeLimitOverride(enabled)
         }
     }
 
@@ -105,11 +102,8 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         enabled: Bool,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        respond(reply: reply) { [stateStore, runtime] in
-            try await stateStore.setForceDischarge(enabled)
-            let snapshot = await runtime.currentSnapshot(refreshHardware: false)
-            await runtime.publishCurrentSnapshot()
-            return snapshot
+        respond(reply: reply) { [runtime] in
+            try await runtime.setForceDischarge(enabled)
         }
     }
 
@@ -128,7 +122,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         reply: @escaping @Sendable (Bool, String?) -> Void
     ) {
         runCompatibilityCommand(reply: reply) { [hardware] in
-            try await hardware.setChargingEnabled(enabled)
+            _ = try await hardware.setChargingEnabled(enabled)
         }
     }
 
@@ -137,7 +131,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         reply: @escaping @Sendable (Bool, String?) -> Void
     ) {
         runCompatibilityCommand(reply: reply) { [hardware] in
-            try await hardware.setAdapterEnabled(enabled)
+            _ = try await hardware.setAdapterEnabled(enabled)
         }
     }
 
@@ -146,7 +140,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         reply: @escaping @Sendable (Bool, String?) -> Void
     ) {
         runCompatibilityCommand(reply: reply) { [hardware] in
-            try await hardware.setMagSafeLED(rawValue: target)
+            _ = try await hardware.setMagSafeLED(rawValue: target)
         }
     }
 
@@ -166,7 +160,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
 
             let settingsPayload = try DaemonPayloadCodec.encode(settingsState)
             clients.publishSettings(settingsPayload)
-            await runtime.publishCurrentSnapshot()
+            await runtime.settingsDidChange()
             return settingsState
         }
     }

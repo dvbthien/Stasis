@@ -49,6 +49,13 @@ let runtime = DaemonRuntimeCoordinator(
     hardware: hardware,
     clients: clients
 )
+let managementEngine = BatteryManagementEngine(
+    capabilities: capabilities,
+    settingsStore: settingsStore,
+    stateStore: stateStore,
+    hardware: hardware,
+    runtime: runtime
+)
 let commandHandler = ChargingDaemonCommandHandler(
     settingsStore: settingsStore,
     stateStore: stateStore,
@@ -73,6 +80,7 @@ let server = StasisDaemonXPCServer(
 )
 let ioKitMonitor = DaemonIOKitMonitor()
 Task { @MainActor in
+    await runtime.installManagementEngine(managementEngine)
     let initialUpdate = ioKitMonitor.start { update in
         Task {
             await runtime.handlePowerSourceUpdate(update)

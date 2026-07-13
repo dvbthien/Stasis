@@ -12,6 +12,10 @@ actor DaemonStateStore {
 
     private var chargeLimitOverrideActive = false
     private var forceDischargeActive = false
+    private var desiredCharging: Bool?
+    private var desiredAdapter: Bool?
+    private var desiredLEDStateRawValue: UInt8?
+    private var policyReason: String?
 
     init(
         capabilities: DaemonCapabilities,
@@ -45,6 +49,36 @@ actor DaemonStateStore {
         if enabled {
             chargeLimitOverrideActive = false
         }
+    }
+
+    func clearTemporaryPolicyState() {
+        chargeLimitOverrideActive = false
+        forceDischargeActive = false
+    }
+
+    func managementContext() -> DaemonManagementContext {
+        DaemonManagementContext(
+            controlState: BatteryControlState(
+                batteryPercentage: battery.displayedPercentage,
+                hardwareBatteryPercentage: battery.hardwarePercentage,
+                adapterConnected: adapter.physicallyConnected,
+                batteryTemperature: battery.temperature
+            ),
+            chargeLimitOverrideActive: chargeLimitOverrideActive,
+            forceDischargeActive: forceDischargeActive
+        )
+    }
+
+    func updatePolicyDecision(
+        desiredCharging: Bool?,
+        desiredAdapter: Bool?,
+        desiredLEDStateRawValue: UInt8?,
+        reason: String?
+    ) {
+        self.desiredCharging = desiredCharging
+        self.desiredAdapter = desiredAdapter
+        self.desiredLEDStateRawValue = desiredLEDStateRawValue
+        policyReason = reason
     }
 
     @discardableResult
@@ -112,7 +146,10 @@ actor DaemonStateStore {
                 managementEnabled: settingsState.settings.managementEnabled,
                 chargeLimitOverrideActive: chargeLimitOverrideActive,
                 forceDischargeActive: forceDischargeActive,
-                reason: "Daemon policy ownership is not enabled yet"
+                desiredCharging: desiredCharging,
+                desiredAdapter: desiredAdapter,
+                desiredLEDStateRawValue: desiredLEDStateRawValue,
+                reason: policyReason
             ),
             runtime: DaemonRuntimeState(
                 status: runtimeStatus,
