@@ -1,6 +1,4 @@
 import XCTest
-@testable import stasis
-import smc_power
 
 final class ChargeLimitPolicyTests: XCTestCase {
     @MainActor

@@ -13,7 +13,6 @@ protocol DaemonHardwareControlling: Sendable {
     func ensureFirmwareChargeLimitDisabled() async throws -> Bool
     func readHardwareState() async throws -> DaemonHardwareState
     func readTelemetry() async -> DaemonTelemetryReading
-    func resetToDefaults() async
 }
 
 extension DaemonHardwareControlling {

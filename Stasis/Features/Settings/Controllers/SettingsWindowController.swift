@@ -1,7 +1,6 @@
 import AppKit
 import Defaults
 import SwiftUI
-import smc_power
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {

@@ -230,31 +230,6 @@ final class SMCChargeControlTests: XCTestCase {
         }
     }
 
-    func testResetDispatchesByMode() throws {
-        let legacyTransport = MockSMCTransport([
-            .legacyChargingPrimary: .init(size: 1, data: [0x02]),
-            .legacyChargingSecondary: .init(size: 1, data: [0x02]),
-        ])
-        let legacy = try SMCBattery.probe(using: legacyTransport)
-        try legacy.resetChargeControl()
-        XCTAssertEqual(legacyTransport.writes, [
-            .init(key: .legacyChargingPrimary, data: [0x00]),
-            .init(key: .legacyChargingSecondary, data: [0x00]),
-        ])
-
-        let firmwareTransport = firmwareTransport(active: 2, lower: 75, upper: 80)
-        let firmware = try SMCBattery.probe(using: firmwareTransport)
-        try firmware.resetChargeControl()
-        XCTAssertEqual(firmwareTransport.writes, [
-            .init(key: .firmwareActivation, data: [0x00])
-        ])
-
-        let unsupported = try SMCBattery.probe(using: MockSMCTransport([:]))
-        XCTAssertThrowsError(try unsupported.resetChargeControl()) { error in
-            XCTAssertEqual(error as? SMCBatteryError, .unsupportedCapability)
-        }
-    }
-
     private func firmwareTransport(
         active: UInt8,
         lower: UInt32,

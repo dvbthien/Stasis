@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import os.log
 import smc_power
 
@@ -60,7 +61,6 @@ let commandHandler = ChargingDaemonCommandHandler(
     settingsStore: settingsStore,
     stateStore: stateStore,
     runtime: runtime,
-    hardware: hardware,
     capabilities: capabilities,
     daemonVersion: daemonVersion,
     clients: clients
@@ -79,7 +79,23 @@ let server = StasisDaemonXPCServer(
     clients: clients
 )
 let ioKitMonitor = DaemonIOKitMonitor()
+signal(SIGTERM, SIG_IGN)
+let terminationSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+terminationSource.setEventHandler {
+    logger.info("Stasis daemon received SIGTERM; stopping process-owned resources")
+    Task { @MainActor in
+        server.stop()
+        ioKitMonitor.stop()
+        await runtime.shutdown()
+        CFRunLoopStop(CFRunLoopGetMain())
+    }
+}
+terminationSource.resume()
+
 Task { @MainActor in
+    await runtime.installIOKitRefreshHandler { reason in
+        await ioKitMonitor.refresh(reason: reason)
+    }
     await runtime.installManagementEngine(managementEngine)
     let initialUpdate = ioKitMonitor.start { update in
         Task {

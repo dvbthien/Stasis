@@ -112,9 +112,7 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
         fixture.handler.connectionInvalidated()
         try await Task.sleep(for: .milliseconds(20))
 
-        let resetCount = await fixture.hardware.resetCount()
         let hardwareWriteCount = await fixture.hardware.writeCount()
-        XCTAssertEqual(resetCount, 0)
         XCTAssertEqual(hardwareWriteCount, 0)
     }
 
@@ -158,7 +156,6 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             settingsStore: settingsStore,
             stateStore: stateStore,
             runtime: runtime,
-            hardware: hardware,
             capabilities: capabilities,
             daemonVersion: "test",
             clients: clients
@@ -208,7 +205,6 @@ private enum TestCommandError: Error {
 }
 
 private actor MockDaemonHardwareController: DaemonHardwareControlling {
-    private var resets = 0
     private var writes = 0
     func setChargingEnabled(_ enabled: Bool) async throws -> Bool {
         writes += 1
@@ -233,14 +229,6 @@ private actor MockDaemonHardwareController: DaemonHardwareControlling {
 
     func readTelemetry() async -> DaemonTelemetryReading {
         DaemonTelemetryReading()
-    }
-
-    func resetToDefaults() async {
-        resets += 1
-    }
-
-    func resetCount() -> Int {
-        resets
     }
 
     func writeCount() -> Int {

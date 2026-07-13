@@ -1,15 +1,7 @@
 import XCTest
 @testable import stasis
-import smc_power
 
 final class DaemonContractsTests: XCTestCase {
-    @MainActor
-    func testWireChargeControlModeMapsFromSMCMode() {
-        XCTAssertEqual(ChargeControlMode(smcMode: .unsupported), .unsupported)
-        XCTAssertEqual(ChargeControlMode(smcMode: .legacy), .legacy)
-        XCTAssertEqual(ChargeControlMode(smcMode: .firmware), .firmware)
-    }
-
     @MainActor
     func testSettingsRoundTripPreservesEveryField() throws {
         let settings = DaemonSettings(

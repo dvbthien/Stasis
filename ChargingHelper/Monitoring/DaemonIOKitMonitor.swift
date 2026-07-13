@@ -40,6 +40,10 @@ final class DaemonIOKitMonitor {
         return readUpdate(reason: .initial)
     }
 
+    func refresh(reason: DaemonPowerSourceUpdateReason) -> DaemonPowerSourceUpdate? {
+        readUpdate(reason: reason)
+    }
+
     func stop() {
         if batteryInterestNotification != 0 {
             IOObjectRelease(batteryInterestNotification)

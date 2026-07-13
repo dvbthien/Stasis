@@ -7,7 +7,6 @@ import UserNotifications
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusBarManager: StatusBarManager!
     private var batteryService: BatteryService!
-    private var chargingCoordinator: ChargingCoordinator!
     private var lowPowerModeMonitor: LowPowerModeMonitor!
     private var uptimeClock: UptimeClock!
     private var menuBuilder: MenuBuilder!
@@ -40,14 +39,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupServices() async {
         batteryService = BatteryService()
         await batteryService.loadCapabilities()
-        chargingCoordinator = ChargingCoordinator(batteryService: batteryService)
         lowPowerModeMonitor = LowPowerModeMonitor()
         uptimeClock = UptimeClock()
         settingsWindowController = SettingsWindowController(
             capabilities: batteryService.deviceCapabilities)
         menuBuilder = MenuBuilder(
             batteryService: batteryService,
-            chargingCoordinator: chargingCoordinator,
             uptimeClock: uptimeClock,
             settingsWindowController: settingsWindowController
         )
@@ -139,7 +136,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         chargingNotificationObservation?.cancel()
         chargingNotificationObservation = nil
 
-        chargingCoordinator?.stop()
         batteryService?.stop()
         uptimeClock?.stop()
         ChargingDaemonManager.shared.disconnect()
@@ -147,11 +143,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         uptimeClock.start()
-        batteryService.enableFastPolling()
+        batteryService.setFastTelemetryEnabled(true)
     }
 
     func menuDidClose(_ menu: NSMenu) {
         uptimeClock.stop()
-        batteryService.disableFastPolling()
+        batteryService.setFastTelemetryEnabled(false)
     }
 }

@@ -1,5 +1,4 @@
 import SwiftUI
-import smc_power
 
 struct SettingsView: View {
   @State private var selectedTab: SettingsTab = .general

@@ -142,7 +142,11 @@ final class ChargingManagementController {
     _ newStatus: ChargingDaemonConnectionStatus,
     manageCharging: Bool
   ) {
-    guard manageCharging, newStatus != .connected else { return }
+    guard manageCharging else { return }
+    if newStatus == .connected {
+      flowState = .ready
+      return
+    }
     flowState = .failed(connectionStatusMessage(for: newStatus) ?? "Charging daemon disconnected.")
   }
 

@@ -1,5 +1,4 @@
 import Defaults
-import smc_power
 
 /// Temporary Phase 1 bridge that preserves the current app-owned runtime.
 /// This is removed once the daemon settings store becomes authoritative.

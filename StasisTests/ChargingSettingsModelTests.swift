@@ -101,9 +101,16 @@ final class ChargingSettingsModelTests: XCTestCase {
     }
 
     func testCapabilityAvailabilityDisablesLegacyOnlyFirmwareFeatures() {
+        let unresolved = ChargingSettingsAvailability(capabilities: nil)
+        XCTAssertFalse(unresolved.isResolved)
+        XCTAssertFalse(unresolved.management)
+        XCTAssertTrue(unresolved.canAttemptManagement)
+
         let legacy = ChargingSettingsAvailability(
             capabilities: capabilities(mode: .legacy)
         )
+        XCTAssertTrue(legacy.isResolved)
+        XCTAssertTrue(legacy.canAttemptManagement)
         XCTAssertTrue(legacy.management)
         XCTAssertTrue(legacy.automaticDischarge)
         XCTAssertTrue(legacy.sleepPrevention)
@@ -123,6 +130,8 @@ final class ChargingSettingsModelTests: XCTestCase {
         let unsupported = ChargingSettingsAvailability(
             capabilities: capabilities(mode: .unsupported)
         )
+        XCTAssertTrue(unsupported.isResolved)
+        XCTAssertFalse(unsupported.canAttemptManagement)
         XCTAssertFalse(unsupported.management)
         XCTAssertFalse(unsupported.sailingMode)
     }

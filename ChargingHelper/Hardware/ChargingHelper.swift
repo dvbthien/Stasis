@@ -46,13 +46,13 @@ actor ChargingHelper: DaemonHardwareControlling {
     guard adapter.capabilities.magSafeControl else {
       throw SMCAdapterError.magSafeNotSupported
     }
-    guard let state = MagSafeLEDState(rawValue: rawValue) else {
+    guard MagSafeLEDState(rawValue: rawValue) != nil else {
       throw SMCAdapterError.unknownLEDState(rawValue)
     }
-    let currentState = try adapter.getMagSafeLEDState()
-    if currentState != state {
-      try adapter.setMagSafeLEDState(state)
-      logger.debug("SMC MagSafe LED set to: \(state.rawValue)")
+    let currentRawValue = try adapter.getMagSafeLEDStateRawValue()
+    if currentRawValue != rawValue {
+      try adapter.setMagSafeLEDStateRawValue(rawValue)
+      logger.debug("SMC MagSafe LED set to: \(rawValue)")
       return true
     }
     return false
@@ -93,7 +93,7 @@ actor ChargingHelper: DaemonHardwareControlling {
     let forceDischarging =
       adapter.capabilities.powerControl ? try !adapter.getPowerEnabled() : nil
     let ledRawValue =
-      adapter.capabilities.magSafeControl ? try adapter.getMagSafeLEDState().rawValue : nil
+      adapter.capabilities.magSafeControl ? try adapter.getMagSafeLEDStateRawValue() : nil
 
     return DaemonHardwareState(
       chargingInhibited: chargingInhibited,
@@ -116,23 +116,6 @@ actor ChargingHelper: DaemonHardwareControlling {
       adapterCurrent: adapterTelemetry.current,
       adapterPower: adapterTelemetry.power
     )
-  }
-
-  func resetToDefaults() {
-    do {
-      if battery.capabilities.chargeControlMode != .unsupported {
-        try battery.resetChargeControl()
-      }
-      if adapter.capabilities.powerControl {
-        try adapter.setPowerEnabled(true)
-      }
-      if adapter.capabilities.magSafeControl {
-        try adapter.setMagSafeLEDState(.reset)
-      }
-      logger.info("SMC keys reset to defaults")
-    } catch {
-      logger.error("resetToDefaults failed: \(error.localizedDescription)")
-    }
   }
 
   private func readBatteryTelemetry() -> (

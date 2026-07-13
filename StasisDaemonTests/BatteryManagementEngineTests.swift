@@ -52,16 +52,17 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertEqual(snapshot.hardware.firmwareChargeLimit?.upper, 80)
     }
 
-    func testLegacyPeriodicPassRepairsExternallyChangedChargingState() async throws {
+    func testLegacyIOKitUpdateRepairsExternallyChangedChargingState() async throws {
         let fixture = try await makeFixture(
             mode: .legacy,
-            settings: settings(automaticDischarge: false),
-            periodicInterval: .milliseconds(20)
+            settings: settings(automaticDischarge: false)
         )
         await fixture.runtime.handlePowerSourceUpdate(update(percentage: 80))
         await fixture.hardware.simulateExternalChargingChange(enabled: true)
 
-        try await Task.sleep(for: .milliseconds(70))
+        await fixture.runtime.handlePowerSourceUpdate(
+            update(percentage: 80, reason: .interestNotification)
+        )
 
         let chargingEnabled = await fixture.hardware.isChargingEnabled()
         XCTAssertFalse(chargingEnabled)
@@ -71,11 +72,10 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertEqual(disableWrites.count, 2)
     }
 
-    func testFirmwarePeriodicPassRepairsExternallyChangedLimits() async throws {
+    func testFirmwareIOKitUpdateRepairsExternallyChangedLimits() async throws {
         let fixture = try await makeFixture(
             mode: .firmware,
-            settings: settings(sailingModeEnabled: false),
-            periodicInterval: .milliseconds(20)
+            settings: settings(sailingModeEnabled: false)
         )
         await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
         await fixture.hardware.simulateExternalFirmwareChange(
@@ -84,7 +84,9 @@ final class BatteryManagementEngineTests: XCTestCase {
             upper: 100
         )
 
-        try await Task.sleep(for: .milliseconds(70))
+        await fixture.runtime.handlePowerSourceUpdate(
+            update(percentage: 60, reason: .interestNotification)
+        )
 
         let firmwareState = await fixture.hardware.firmwareState()
         XCTAssertEqual(
@@ -97,6 +99,29 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertEqual(firmwareWrites.count, 2)
         let containsLegacyWrite = await fixture.hardware.containsLegacyChargingWrite()
         XCTAssertFalse(containsLegacyWrite)
+    }
+
+    func testIdleEngineDoesNotRefreshTelemetryWithoutEventOrMenuDemand() async throws {
+        let fixture = try await makeFixture(
+            mode: .legacy,
+            settings: settings(automaticDischarge: false),
+            telemetryReadings: [
+                telemetry(batteryPower: -4, adapterPower: 0),
+                telemetry(batteryPower: 8, adapterPower: 45),
+            ]
+        )
+
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
+        try await Task.sleep(for: .milliseconds(55))
+
+        let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
+        let telemetryActive = await fixture.runtime.isTelemetryActive()
+        let telemetryReads = await fixture.hardware.telemetryReadCount()
+        XCTAssertEqual(snapshot.battery.power, -4)
+        XCTAssertFalse(snapshot.battery.isCharging)
+        XCTAssertEqual(snapshot.adapter.power, 0)
+        XCTAssertEqual(telemetryReads, 1)
+        XCTAssertFalse(telemetryActive)
     }
 
     func testFirmwareWakeReconcilesLimitsWithoutLegacySleepHooks() async throws {
@@ -171,6 +196,65 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertTrue(operations.contains(.adapter(false)))
     }
 
+    func testSettingsTriggerUsesFreshIOKitStateBeforePolicyEvaluation() async throws {
+        let fixture = try await makeFixture(
+            mode: .legacy,
+            settings: settings(automaticDischarge: true)
+        )
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
+        let refreshedUpdate = update(percentage: 81)
+        await fixture.runtime.installIOKitRefreshHandler { reason in
+            var update = refreshedUpdate
+            update.reason = reason
+            return update
+        }
+
+        await fixture.runtime.settingsDidChange()
+
+        let chargingEnabled = await fixture.hardware.isChargingEnabled()
+        let adapterEnabled = await fixture.hardware.isAdapterEnabled()
+        XCTAssertFalse(chargingEnabled)
+        XCTAssertFalse(adapterEnabled)
+    }
+
+    func testSuccessfulSMCWriteRefreshesIOKitBeforePublishingResult() async throws {
+        let fixture = try await makeFixture(
+            mode: .legacy,
+            settings: settings(automaticDischarge: false),
+            initialChargingEnabled: false
+        )
+        let refreshedUpdate = update(percentage: 61)
+        await fixture.runtime.installIOKitRefreshHandler { reason in
+            var update = refreshedUpdate
+            update.reason = reason
+            return update
+        }
+
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
+
+        let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
+        let chargingEnabled = await fixture.hardware.isChargingEnabled()
+        XCTAssertEqual(snapshot.battery.displayedPercentage, 61)
+        XCTAssertTrue(chargingEnabled)
+    }
+
+    func testIOKitInterestReconcilesBatteryPercentageChange() async throws {
+        let fixture = try await makeFixture(
+            mode: .legacy,
+            settings: settings(automaticDischarge: true)
+        )
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
+
+        await fixture.runtime.handlePowerSourceUpdate(
+            update(percentage: 81, reason: .interestNotification)
+        )
+
+        let chargingEnabled = await fixture.hardware.isChargingEnabled()
+        let adapterEnabled = await fixture.hardware.isAdapterEnabled()
+        XCTAssertFalse(chargingEnabled)
+        XCTAssertFalse(adapterEnabled)
+    }
+
     func testAutomaticDischargeRefreshesDelayedTelemetryWithoutMenuDemand() async throws {
         let initialSettings = settings(automaticDischarge: false)
         let fixture = try await makeFixture(
@@ -221,10 +305,121 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertEqual(updates, [true])
     }
 
+    func testLegacyUninstallCleanupRestoresManagedHardwareDefaults() async throws {
+        let fixture = try await makeFixture(
+            mode: .legacy,
+            settings: settings(automaticDischarge: true, preventSleepUntilLimit: true)
+        )
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 81))
+
+        try await fixture.runtime.prepareForUninstall()
+
+        let operations = await fixture.hardware.operations()
+        let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
+        let sleepUpdates = await fixture.sleepAssertion.updates()
+        XCTAssertEqual(
+            operations,
+            [
+                .charging(false), .adapter(false), .led(3),
+                .charging(true), .adapter(true), .led(0),
+            ]
+        )
+        XCTAssertFalse(snapshot.policy.chargeLimitOverrideActive)
+        XCTAssertFalse(snapshot.policy.forceDischargeActive)
+        XCTAssertEqual(snapshot.policy.desiredCharging, true)
+        XCTAssertEqual(snapshot.policy.desiredAdapter, true)
+        XCTAssertEqual(snapshot.policy.desiredLEDStateRawValue, 0)
+        XCTAssertEqual(snapshot.policy.reason, "Daemon prepared for uninstall")
+        XCTAssertEqual(sleepUpdates.last, false)
+    }
+
+    func testFirmwareUninstallCleanupDisablesLimitAndRestoresAdapter() async throws {
+        let fixture = try await makeFixture(
+            mode: .firmware,
+            settings: settings(sailingModeEnabled: true, sailingDelta: 5)
+        )
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
+        _ = try await fixture.runtime.setForceDischarge(true)
+
+        try await fixture.runtime.prepareForUninstall()
+
+        let firmwareState = await fixture.hardware.firmwareState()
+        let adapterEnabled = await fixture.hardware.isAdapterEnabled()
+        let operations = await fixture.hardware.operations()
+        XCTAssertFalse(firmwareState.active)
+        XCTAssertTrue(adapterEnabled)
+        XCTAssertTrue(operations.contains(.adapter(false)))
+        XCTAssertTrue(operations.contains(.adapter(true)))
+        let containsLegacyWrite = await fixture.hardware.containsLegacyChargingWrite()
+        XCTAssertFalse(containsLegacyWrite)
+    }
+
+    func testLegacyProcessShutdownRestoresSMCHardwareDefaults() async throws {
+        let fixture = try await makeFixture(
+            mode: .legacy,
+            settings: settings(automaticDischarge: true)
+        )
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 81))
+
+        await fixture.runtime.shutdown()
+
+        let operations = await fixture.hardware.operations()
+        let chargingEnabled = await fixture.hardware.isChargingEnabled()
+        let adapterEnabled = await fixture.hardware.isAdapterEnabled()
+        let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
+        XCTAssertEqual(
+            operations,
+            [
+                .charging(false), .adapter(false), .led(3),
+                .charging(true), .adapter(true), .led(0),
+            ]
+        )
+        XCTAssertTrue(chargingEnabled)
+        XCTAssertTrue(adapterEnabled)
+        XCTAssertEqual(snapshot.policy.reason, "Daemon is shutting down")
+    }
+
+    func testFirmwareProcessShutdownDisablesLimitAndRestoresAdapter() async throws {
+        let fixture = try await makeFixture(
+            mode: .firmware,
+            settings: settings(sailingModeEnabled: true, sailingDelta: 5)
+        )
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
+        _ = try await fixture.runtime.setForceDischarge(true)
+
+        await fixture.runtime.shutdown()
+
+        let firmwareState = await fixture.hardware.firmwareState()
+        let adapterEnabled = await fixture.hardware.isAdapterEnabled()
+        let operations = await fixture.hardware.operations()
+        XCTAssertFalse(firmwareState.active)
+        XCTAssertTrue(adapterEnabled)
+        XCTAssertTrue(operations.contains(.firmwareDisabled))
+        XCTAssertTrue(operations.contains(.adapter(true)))
+    }
+
+    func testFailedUninstallCanResumeCanonicalManagement() async throws {
+        let fixture = try await makeFixture(
+            mode: .legacy,
+            settings: settings(automaticDischarge: true)
+        )
+        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 81))
+        try await fixture.runtime.prepareForUninstall()
+
+        await fixture.runtime.cancelUninstallPreparation()
+
+        let chargingEnabled = await fixture.hardware.isChargingEnabled()
+        let adapterEnabled = await fixture.hardware.isAdapterEnabled()
+        let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
+        XCTAssertFalse(chargingEnabled)
+        XCTAssertFalse(adapterEnabled)
+        XCTAssertEqual(snapshot.policy.reason, "Battery is above the charge limit of 80%")
+    }
+
     func testMaintainLoopSerializesConcurrentTriggers() async throws {
         let loop = DaemonMaintainLoop()
         let probe = MaintainOperationProbe()
-        await loop.start(periodicInterval: .seconds(10)) { _ in
+        await loop.start { _ in
             await probe.run()
         }
 
@@ -243,10 +438,38 @@ final class BatteryManagementEngineTests: XCTestCase {
         await loop.stop()
     }
 
+    func testMaintainRequestWaitsUntilItsReconciliationCompletes() async throws {
+        let loop = DaemonMaintainLoop()
+        let gate = MaintainOperationGate()
+        let secondRequest = RequestCompletionFlag()
+        await loop.start { _ in
+            await gate.run()
+        }
+
+        let firstTask = Task {
+            await loop.request(.powerSource)
+        }
+        await gate.waitUntilFirstPassStarts()
+        let secondTask = Task {
+            await loop.request(.settings)
+            await secondRequest.markCompleted()
+        }
+
+        try await Task.sleep(for: .milliseconds(10))
+        let completedBeforeReconciliation = await secondRequest.isCompleted()
+        XCTAssertFalse(completedBeforeReconciliation)
+
+        await gate.releaseFirstPass()
+        await firstTask.value
+        await secondTask.value
+        let completedAfterReconciliation = await secondRequest.isCompleted()
+        XCTAssertTrue(completedAfterReconciliation)
+        await loop.stop()
+    }
+
     private func makeFixture(
         mode: ChargeControlMode,
         settings: DaemonSettings,
-        periodicInterval: Duration = .seconds(10),
         delayedTelemetryRefreshDelay: Duration = .seconds(3),
         initialChargingEnabled: Bool = true,
         telemetryReadings: [DaemonTelemetryReading] = []
@@ -290,8 +513,7 @@ final class BatteryManagementEngineTests: XCTestCase {
             stateStore: stateStore,
             hardware: hardware,
             runtime: runtime,
-            sleepAssertion: sleepAssertion,
-            periodicInterval: periodicInterval
+            sleepAssertion: sleepAssertion
         )
         await runtime.installManagementEngine(engine)
         return (runtime, hardware, sleepAssertion, settingsStore)
@@ -438,8 +660,6 @@ private actor EngineMockHardware: DaemonHardwareControlling {
         return telemetryReadings[index]
     }
 
-    func resetToDefaults() {}
-
     func operations() -> [EngineHardwareOperation] {
         recordedOperations
     }
@@ -510,5 +730,47 @@ private actor MaintainOperationProbe {
 
     func passCount() -> Int {
         completedPasses
+    }
+}
+
+private actor MaintainOperationGate {
+    private var passCount = 0
+    private var firstPassStartedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var firstPassRelease: CheckedContinuation<Void, Never>?
+
+    func run() async {
+        passCount += 1
+        guard passCount == 1 else { return }
+
+        let waiters = firstPassStartedWaiters
+        firstPassStartedWaiters.removeAll()
+        waiters.forEach { $0.resume() }
+        await withCheckedContinuation { continuation in
+            firstPassRelease = continuation
+        }
+    }
+
+    func waitUntilFirstPassStarts() async {
+        guard passCount == 0 else { return }
+        await withCheckedContinuation { continuation in
+            firstPassStartedWaiters.append(continuation)
+        }
+    }
+
+    func releaseFirstPass() {
+        firstPassRelease?.resume()
+        firstPassRelease = nil
+    }
+}
+
+private actor RequestCompletionFlag {
+    private var completed = false
+
+    func markCompleted() {
+        completed = true
+    }
+
+    func isCompleted() -> Bool {
+        completed
     }
 }

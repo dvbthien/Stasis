@@ -1,11 +1,9 @@
 import Foundation
-import smc_power
 
 final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unchecked Sendable {
     private let settingsStore: DaemonSettingsStore
     private let stateStore: DaemonStateStore
     private let runtime: DaemonRuntimeCoordinator
-    private let hardware: any DaemonHardwareControlling
     private let capabilities: DaemonCapabilities
     private let daemonVersion: String
     private let clients: DaemonClientRegistry
@@ -15,7 +13,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         settingsStore: DaemonSettingsStore,
         stateStore: DaemonStateStore,
         runtime: DaemonRuntimeCoordinator,
-        hardware: any DaemonHardwareControlling,
         capabilities: DaemonCapabilities,
         daemonVersion: String,
         clients: DaemonClientRegistry,
@@ -24,7 +21,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         self.settingsStore = settingsStore
         self.stateStore = stateStore
         self.runtime = runtime
-        self.hardware = hardware
         self.capabilities = capabilities
         self.daemonVersion = daemonVersion
         self.clients = clients
@@ -36,7 +32,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
             settingsStore: settingsStore,
             stateStore: stateStore,
             runtime: runtime,
-            hardware: hardware,
             capabilities: capabilities,
             daemonVersion: daemonVersion,
             clients: clients,
@@ -117,30 +112,26 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         }
     }
 
-    func manageBatteryCharging(
-        enabled: Bool,
+    func prepareForUninstall(
+        authData _: Data?,
         reply: @escaping @Sendable (Bool, String?) -> Void
     ) {
-        runCompatibilityCommand(reply: reply) { [hardware] in
-            _ = try await hardware.setChargingEnabled(enabled)
+        Task { [runtime] in
+            do {
+                try await runtime.prepareForUninstall()
+                reply(true, nil)
+            } catch {
+                reply(false, Self.errorMessage(for: error))
+            }
         }
     }
 
-    func manageExternalPower(
-        enabled: Bool,
-        reply: @escaping @Sendable (Bool, String?) -> Void
+    func cancelUninstallPreparation(
+        reply: @escaping @Sendable (Bool) -> Void
     ) {
-        runCompatibilityCommand(reply: reply) { [hardware] in
-            _ = try await hardware.setAdapterEnabled(enabled)
-        }
-    }
-
-    func manageMagsafeLED(
-        target: UInt8,
-        reply: @escaping @Sendable (Bool, String?) -> Void
-    ) {
-        runCompatibilityCommand(reply: reply) { [hardware] in
-            _ = try await hardware.setMagSafeLED(rawValue: target)
+        Task { [runtime] in
+            await runtime.cancelUninstallPreparation()
+            reply(true)
         }
     }
 
@@ -174,21 +165,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
                 reply(try DaemonPayloadCodec.encode(await operation()), nil)
             } catch {
                 reply(nil, Self.errorMessage(for: error))
-            }
-        }
-    }
-
-    private func runCompatibilityCommand(
-        reply: @escaping @Sendable (Bool, String?) -> Void,
-        operation: @escaping @Sendable () async throws -> Void
-    ) {
-        Task { [runtime] in
-            do {
-                try await operation()
-                await runtime.refreshAfterHardwareChange()
-                reply(true, nil)
-            } catch {
-                reply(false, Self.errorMessage(for: error))
             }
         }
     }

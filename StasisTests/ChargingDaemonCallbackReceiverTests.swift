@@ -4,6 +4,38 @@ import XCTest
 @testable import stasis
 
 final class ChargingDaemonCallbackReceiverTests: XCTestCase {
+    @MainActor
+    func testSnapshotAuthorityRejectsPreviousConnectionGeneration() {
+        var authority = ChargingDaemonSnapshotAuthority()
+        let firstGeneration = authority.beginConnection()
+        authority.markAuthoritative(firstGeneration)
+        XCTAssertTrue(authority.isAuthoritative)
+
+        let secondGeneration = authority.beginConnection()
+        XCTAssertFalse(authority.isAuthoritative)
+
+        authority.markAuthoritative(firstGeneration)
+        XCTAssertFalse(authority.isAuthoritative)
+
+        authority.markAuthoritative(secondGeneration)
+        XCTAssertTrue(authority.isAuthoritative)
+    }
+
+    @MainActor
+    func testSnapshotAuthorityRevokesFreshnessForCurrentConnectionOnly() {
+        var authority = ChargingDaemonSnapshotAuthority()
+        let firstGeneration = authority.beginConnection()
+        authority.markAuthoritative(firstGeneration)
+
+        let secondGeneration = authority.beginConnection()
+        authority.markAuthoritative(secondGeneration)
+        authority.revoke(firstGeneration)
+        XCTAssertTrue(authority.isAuthoritative)
+
+        authority.revoke(secondGeneration)
+        XCTAssertFalse(authority.isAuthoritative)
+    }
+
     func testSnapshotCallbackCanArriveFromDetachedTask() async {
         let callbackReceived = expectation(description: "Snapshot callback received")
         let expectedPayload = Data([0x01, 0x02])

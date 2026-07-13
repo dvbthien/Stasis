@@ -1,5 +1,4 @@
 import Foundation
-import smc_power
 
 /// Plain policy input. It deliberately has no dependency on app defaults.
 struct ChargingSettingsSnapshot: Equatable, Sendable {

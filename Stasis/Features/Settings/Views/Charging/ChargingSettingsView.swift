@@ -1,5 +1,4 @@
 import SwiftUI
-import smc_power
 
 struct ChargingSettingsView: View {
   @State private var helperManager = ChargingDaemonManager.shared
@@ -42,10 +41,14 @@ struct ChargingSettingsView: View {
   }
 
   private var hasAnyControl: Bool {
-    if settingsModel.capabilities != nil {
-      return settingsModel.availability.management
+    if previewState == nil {
+      return settingsModel.availability.canAttemptManagement
     }
-    return hasChargingControl || hasAdapterControl
+    return fallbackCapabilities.chargingControl || fallbackCapabilities.adapterControl
+  }
+
+  private var capabilitiesResolved: Bool {
+    previewState != nil || settingsModel.availability.isResolved
   }
 
   private var automaticDischargeSupported: Bool {
@@ -115,6 +118,7 @@ struct ChargingSettingsView: View {
     helperStatus == .installed
       && connectionStatus == .connected
       && settingsModel.isLoaded
+      && capabilitiesResolved
       && !chargingController.flowState.isLoading
   }
 

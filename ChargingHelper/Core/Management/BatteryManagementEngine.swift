@@ -1,6 +1,5 @@
 import Foundation
 import os.log
-import smc_power
 
 struct DaemonManagementContext: Sendable {
     let controlState: BatteryControlState
@@ -17,13 +16,15 @@ actor BatteryManagementEngine {
     private let sleepAssertion: any DaemonSleepAssertionControlling
     private let maintainLoop: DaemonMaintainLoop
     private weak var runtime: DaemonRuntimeCoordinator?
-    private let periodicInterval: Duration
     private let retryDelay: Duration
 
     private var previousAdapterConnected: Bool?
     private var previousManagementEnabled: Bool?
     private var hasReachedChargeLimit = false
     private var adapterWasForceDisabled = false
+    private var hasManagedMagSafeLED = false
+    private var uninstallError: DaemonErrorPayload?
+    private var isPreparedForUninstall = false
 
     private let logger = Logger(
         subsystem: "com.srimanachanta.stasis-daemon",
@@ -38,7 +39,6 @@ actor BatteryManagementEngine {
         runtime: DaemonRuntimeCoordinator,
         sleepAssertion: any DaemonSleepAssertionControlling = DaemonSleepAssertionController(),
         maintainLoop: DaemonMaintainLoop = DaemonMaintainLoop(),
-        periodicInterval: Duration = .seconds(10),
         retryDelay: Duration = .seconds(2)
     ) {
         mode = capabilities.chargeControlMode
@@ -49,12 +49,11 @@ actor BatteryManagementEngine {
         self.runtime = runtime
         self.sleepAssertion = sleepAssertion
         self.maintainLoop = maintainLoop
-        self.periodicInterval = periodicInterval
         self.retryDelay = retryDelay
     }
 
     func start() async {
-        await maintainLoop.start(periodicInterval: periodicInterval) { [weak self] reasons in
+        await maintainLoop.start { [weak self] reasons in
             await self?.reconcile(reasons: reasons)
         }
     }
@@ -73,13 +72,27 @@ actor BatteryManagementEngine {
         await request(.temporaryCommand)
     }
 
-    /// Stops scheduling work and releases only process-owned resources.
-    /// Hardware state is intentionally preserved across daemon termination.
-    func shutdown() async {
-        await maintainLoop.stop()
-        if mode == .legacy {
-            await sleepAssertion.update(shouldPreventSleep: false)
+    func prepareForUninstall() async throws {
+        isPreparedForUninstall = true
+        uninstallError = nil
+        await request(.uninstall)
+        if let uninstallError {
+            isPreparedForUninstall = false
+            throw uninstallError
         }
+    }
+
+    func cancelUninstallPreparation() async {
+        guard isPreparedForUninstall else { return }
+        isPreparedForUninstall = false
+        await request(.startup)
+    }
+
+    /// Stops scheduling work and restores every SMC state managed by the daemon
+    /// before launchd terminates the process.
+    func shutdown() async {
+        await request(.shutdown)
+        await maintainLoop.stop()
     }
 
     private func reconcile(reasons: Set<DaemonMaintainReason>) async {
@@ -94,7 +107,15 @@ actor BatteryManagementEngine {
         var powerPathChanged = false
 
         do {
-            if !settings.managementEnabled || !context.controlState.adapterConnected {
+            if reasons.contains(.shutdown) {
+                powerPathChanged = try await restoreHardwareDefaults(
+                    reason: "Daemon is shutting down"
+                )
+            } else if isPreparedForUninstall || reasons.contains(.uninstall) {
+                powerPathChanged = try await restoreHardwareDefaults(
+                    reason: "Daemon prepared for uninstall"
+                )
+            } else if !settings.managementEnabled || !context.controlState.adapterConnected {
                 await stateStore.clearTemporaryPolicyState()
                 context = await stateStore.managementContext()
                 hasReachedChargeLimit = false
@@ -131,9 +152,21 @@ actor BatteryManagementEngine {
                 "Maintain pass mode=\(self.mode.rawValue, privacy: .public) triggers=\(reasons.map(\.rawValue).sorted().joined(separator: ","), privacy: .public)"
             )
         } catch {
+            if reasons.contains(.uninstall) {
+                uninstallError = DaemonErrorPayload(
+                    code: .smcFailure,
+                    message: error.localizedDescription
+                )
+            }
             await stateStore.recordHardwareError(error)
             logger.error("Maintain pass failed: \(error.localizedDescription, privacy: .public)")
-            await maintainLoop.scheduleRetry(after: retryDelay)
+            if !reasons.contains(.shutdown) {
+                await maintainLoop.scheduleRetry(after: retryDelay)
+            }
+        }
+
+        if reasons.contains(.shutdown) {
+            return
         }
 
         if powerPathChanged {
@@ -182,6 +215,7 @@ actor BatteryManagementEngine {
         }
         if let desiredLED = decision.desiredLED, capabilities.magSafeLEDControl {
             _ = try await hardware.setMagSafeLED(rawValue: desiredLED.rawValue)
+            hasManagedMagSafeLED = true
         }
 
         await sleepAssertion.update(
@@ -283,6 +317,47 @@ actor BatteryManagementEngine {
             desiredCharging: mode == .legacy ? true : nil,
             desiredAdapter: capabilities.adapterControl ? true : nil,
             desiredLEDStateRawValue: capabilities.magSafeLEDControl ? 0 : nil,
+            reason: reason
+        )
+        return powerPathChanged
+    }
+
+    private func restoreHardwareDefaults(reason: String) async throws -> Bool {
+        await stateStore.clearTemporaryPolicyState()
+        hasReachedChargeLimit = false
+        await sleepAssertion.update(shouldPreventSleep: false)
+
+        var powerPathChanged = false
+        switch mode {
+        case .legacy:
+            powerPathChanged =
+                try await hardware.setChargingEnabled(true)
+                || powerPathChanged
+        case .firmware:
+            powerPathChanged =
+                try await hardware.ensureFirmwareChargeLimitDisabled()
+                || powerPathChanged
+        case .unsupported:
+            break
+        }
+
+        if capabilities.adapterControl {
+            powerPathChanged =
+                try await hardware.setAdapterEnabled(true)
+                || powerPathChanged
+        }
+        adapterWasForceDisabled = false
+
+        let didResetMagSafeLED = hasManagedMagSafeLED && capabilities.magSafeLEDControl
+        if didResetMagSafeLED {
+            _ = try await hardware.setMagSafeLED(rawValue: 0)
+            hasManagedMagSafeLED = false
+        }
+
+        await stateStore.updatePolicyDecision(
+            desiredCharging: mode == .legacy ? true : nil,
+            desiredAdapter: capabilities.adapterControl ? true : nil,
+            desiredLEDStateRawValue: didResetMagSafeLED ? 0 : nil,
             reason: reason
         )
         return powerPathChanged

@@ -1,5 +1,4 @@
 import SwiftUI
-import smc_power
 
 extension DeviceCapabilities {
   fileprivate static let chargingSettingsPreview = DeviceCapabilities(

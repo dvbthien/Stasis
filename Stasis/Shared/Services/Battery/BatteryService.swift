@@ -1,11 +1,10 @@
 import Foundation
 import Observation
 import os.log
-import smc_power
 
 /// Uses daemon snapshots as the authoritative source for the status icon and
-/// menu. The app-side IOKit monitor and read-only SMC helper remain available
-/// as an immediate fallback while the daemon is unavailable or reconnecting.
+/// menu. The app-side IOKit monitor remains available as an immediate fallback
+/// while the daemon is unavailable or reconnecting.
 @MainActor
 @Observable
 class BatteryService {
@@ -16,34 +15,24 @@ class BatteryService {
 
   private let ioKitService = IOKitService()
   private let daemonManager = ChargingDaemonManager.shared
-  private var smcPoller: SMCMetricsPoller!
 
   private var ioKitMonitorTask: Task<Void, Never>?
   private var daemonTelemetrySyncTask: Task<Void, Never>?
 
   private var fallbackMetrics = BatteryMetrics()
   private var fallbackAdapterMetrics = AdapterMetrics()
-  private var fallbackFastPollingActive = false
   private var telemetryRequested = false
   private var appliedDaemonTelemetry = false
-  private var desiredDaemonTelemetry = false
   private var isStopped = false
 
   private let logger = Logger.stasis("BatteryService")
 
   init() {
     logger.info("BatteryService initialized")
-    smcPoller = SMCMetricsPoller(
-      serviceName: "com.srimanachanta.stasis-monitor-helper",
-      onReading: { [weak self] battery, adapter in
-        self?.handleSMCReading(battery, adapter)
-      }
-    )
     startIOKitMonitoring()
     daemonManager.startStateStreaming()
     handleDaemonStateChange()
     observeDaemonState()
-    scheduleSinglePoll()
   }
 
   func loadCapabilities() async {
@@ -52,17 +41,11 @@ class BatteryService {
       return
     }
 
-    guard let capabilities = await smcPoller.loadCapabilities() else {
-      return
-    }
-    self.deviceCapabilities = capabilities
-    logger.info(
-      "Capabilities loaded: charging=\(capabilities.chargingControl), adapter=\(capabilities.adapterControl), magSafe=\(capabilities.hasMagSafe)"
-    )
+    deviceCapabilities = .unknown
   }
 
   private var authoritativeDaemonSnapshot: DaemonSnapshot? {
-    guard daemonManager.connectionStatus == .connected else { return nil }
+    guard daemonManager.hasFreshDaemonSnapshot else { return nil }
     return daemonManager.daemonSnapshot
   }
 
@@ -71,6 +54,7 @@ class BatteryService {
     withObservationTracking {
       _ = daemonManager.connectionStatus
       _ = daemonManager.daemonSnapshot
+      _ = daemonManager.hasFreshDaemonSnapshot
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self, !self.isStopped else { return }
@@ -83,7 +67,9 @@ class BatteryService {
   private func handleDaemonStateChange() {
     if let snapshot = authoritativeDaemonSnapshot {
       applyDaemonSnapshot(snapshot)
+      stopIOKitMonitoring()
     } else {
+      startIOKitMonitoring()
       applyFallbackSnapshot()
       if appliedDaemonTelemetry {
         // XPC invalidation/interruption removes this client's demand in the
@@ -91,12 +77,15 @@ class BatteryService {
         appliedDaemonTelemetry = false
       }
     }
-    synchronizeTelemetrySources()
+    synchronizeTelemetryDemand()
   }
 
   private func startIOKitMonitoring() {
+    guard !isStopped, ioKitMonitorTask == nil else { return }
     logger.info("Starting IOKit monitoring in main app")
-    ioKitMonitorTask = Task {
+    ioKitMonitorTask = Task { [weak self] in
+      guard let self else { return }
+      guard !Task.isCancelled else { return }
       for await (newBatteryMetrics, newAdapterMetrics) in self.ioKitService.metricsStream() {
         guard !Task.isCancelled else { break }
         self.handleIOKitUpdate(newBatteryMetrics, adapterUpdate: newAdapterMetrics)
@@ -104,58 +93,24 @@ class BatteryService {
     }
   }
 
-  func enableFastPolling() {
-    telemetryRequested = true
-    synchronizeTelemetrySources()
+  private func stopIOKitMonitoring() {
+    guard ioKitMonitorTask != nil else { return }
+    logger.info("Stopping app-side IOKit fallback")
+    ioKitMonitorTask?.cancel()
+    ioKitMonitorTask = nil
+    ioKitService.stopMonitoring()
   }
 
-  func disableFastPolling() {
-    telemetryRequested = false
-    synchronizeTelemetrySources()
-  }
-
-  func scheduleSinglePoll(delay: Duration = .seconds(3)) {
-    guard authoritativeDaemonSnapshot == nil else { return }
-    smcPoller.scheduleSinglePoll(delay: delay)
-    logger.debug("Scheduled fallback SMC update")
-  }
-
-  private func handleSMCReading(
-    _ batteryReading: SMCBatteryReading, _ adapterReading: SMCAdapterReading
-  ) {
-    fallbackMetrics.batteryVoltage = batteryReading.batteryVoltage
-    fallbackMetrics.batteryCurrent = batteryReading.batteryCurrent
-    fallbackMetrics.batteryPower = batteryReading.batteryPower
-
-    fallbackAdapterMetrics.adapterVoltage = adapterReading.adapterVoltage
-    fallbackAdapterMetrics.adapterCurrent = adapterReading.adapterCurrent
-    fallbackAdapterMetrics.adapterPower = adapterReading.adapterPower
-
-    if fallbackAdapterMetrics.adapterConnected {
-      fallbackMetrics.isCharging = batteryReading.batteryPower > 0
-    }
-
-    if authoritativeDaemonSnapshot == nil {
-      applyFallbackSnapshot()
-    }
+  func setFastTelemetryEnabled(_ enabled: Bool) {
+    telemetryRequested = enabled
+    synchronizeTelemetryDemand()
   }
 
   private func handleIOKitUpdate(_ newBatteryMetrics: BatteryMetrics, adapterUpdate: AdapterMetrics)
   {
     logger.debug("Received fallback IOKit update")
-
-    var updatedBattery = newBatteryMetrics
-    updatedBattery.batteryVoltage = fallbackMetrics.batteryVoltage
-    updatedBattery.batteryCurrent = fallbackMetrics.batteryCurrent
-    updatedBattery.batteryPower = fallbackMetrics.batteryPower
-    fallbackMetrics = updatedBattery
-
-    var updatedAdapter = adapterUpdate
-    updatedAdapter.powerEnabled = fallbackAdapterMetrics.powerEnabled
-    updatedAdapter.adapterVoltage = fallbackAdapterMetrics.adapterVoltage
-    updatedAdapter.adapterCurrent = fallbackAdapterMetrics.adapterCurrent
-    updatedAdapter.adapterPower = fallbackAdapterMetrics.adapterPower
-    fallbackAdapterMetrics = updatedAdapter
+    fallbackMetrics = newBatteryMetrics
+    fallbackAdapterMetrics = adapterUpdate
 
     if authoritativeDaemonSnapshot == nil {
       applyFallbackSnapshot()
@@ -211,43 +166,22 @@ class BatteryService {
     )
   }
 
-  private func synchronizeTelemetrySources() {
-    let useDaemonTelemetry = telemetryRequested && authoritativeDaemonSnapshot != nil
-    desiredDaemonTelemetry = useDaemonTelemetry
-
-    if useDaemonTelemetry {
-      stopFallbackFastPolling()
-    } else if telemetryRequested {
-      startFallbackFastPolling()
-    } else {
-      stopFallbackFastPolling()
-    }
-
-    startDaemonTelemetrySyncIfNeeded()
+  private var shouldEnableDaemonTelemetry: Bool {
+    telemetryRequested && authoritativeDaemonSnapshot != nil
   }
 
-  private func startFallbackFastPolling() {
-    guard !fallbackFastPollingActive else { return }
-    fallbackFastPollingActive = true
-    smcPoller.start()
-  }
-
-  private func stopFallbackFastPolling() {
-    guard fallbackFastPollingActive else { return }
-    fallbackFastPollingActive = false
-    smcPoller.stop()
-  }
-
-  private func startDaemonTelemetrySyncIfNeeded() {
-    guard daemonTelemetrySyncTask == nil, desiredDaemonTelemetry != appliedDaemonTelemetry else {
+  private func synchronizeTelemetryDemand() {
+    guard daemonTelemetrySyncTask == nil,
+      shouldEnableDaemonTelemetry != appliedDaemonTelemetry
+    else {
       return
     }
 
     daemonTelemetrySyncTask = Task { [weak self] in
       guard let self else { return }
 
-      while self.desiredDaemonTelemetry != self.appliedDaemonTelemetry {
-        let target = self.desiredDaemonTelemetry
+      while self.shouldEnableDaemonTelemetry != self.appliedDaemonTelemetry {
+        let target = self.shouldEnableDaemonTelemetry
         do {
           try await self.daemonManager.setTelemetryActive(target)
           self.appliedDaemonTelemetry = target
@@ -263,10 +197,10 @@ class BatteryService {
       }
 
       self.daemonTelemetrySyncTask = nil
-      if self.desiredDaemonTelemetry != self.appliedDaemonTelemetry,
+      if self.shouldEnableDaemonTelemetry != self.appliedDaemonTelemetry,
         self.authoritativeDaemonSnapshot != nil
       {
-        self.startDaemonTelemetrySyncIfNeeded()
+        self.synchronizeTelemetryDemand()
       }
     }
   }
@@ -283,41 +217,12 @@ class BatteryService {
     }
   }
 
-  func manageBatteryCharging(enabled: Bool) async throws {
-    try await ChargingDaemonManager.shared.executeCommand("manage battery charging") {
-      helper, reply in
-      helper.manageBatteryCharging(enabled: enabled) { success, errorMessage in
-        reply(success, errorMessage)
-      }
-    }
-  }
-
-  func manageExternalPower(enabled: Bool) async throws {
-    try await ChargingDaemonManager.shared.executeCommand("manage external power") {
-      helper, reply in
-      helper.manageExternalPower(enabled: enabled) { success, errorMessage in
-        reply(success, errorMessage)
-      }
-    }
-  }
-
-  func manageMagsafeLED(target: MagSafeLEDState) async throws {
-    try await ChargingDaemonManager.shared.executeCommand("manage MagSafe LED") { helper, reply in
-      helper.manageMagsafeLED(target: target.rawValue) { success, errorMessage in
-        reply(success, errorMessage)
-      }
-    }
-  }
-
   func stop() {
     logger.info("BatteryService stopping")
     isStopped = true
     telemetryRequested = false
-    desiredDaemonTelemetry = false
     daemonTelemetrySyncTask?.cancel()
     daemonTelemetrySyncTask = nil
-    ioKitMonitorTask?.cancel()
-    ioKitMonitorTask = nil
-    smcPoller.shutdown()
+    stopIOKitMonitoring()
   }
 }

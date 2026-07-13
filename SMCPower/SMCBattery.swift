@@ -122,17 +122,6 @@ public struct SMCBattery: Sendable {
         }
     }
 
-    public func resetChargeControl() throws {
-        switch capabilities.chargeControlMode {
-        case .legacy:
-            try setChargingEnabled(true)
-        case .firmware:
-            _ = try ensureFirmwareChargeLimitDisabled()
-        case .unsupported:
-            throw SMCBatteryError.unsupportedCapability
-        }
-    }
-
     func requireMode(_ required: SMCChargeControlMode) throws {
         let actual = capabilities.chargeControlMode
         guard actual == required else {

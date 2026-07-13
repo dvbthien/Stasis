@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChargeLimitOverrideToggleView: View {
-    let chargingCoordinator: ChargingCoordinator
+    let controls: ChargingTemporaryControlsModel
 
     var body: some View {
         HStack {
@@ -10,16 +10,16 @@ struct ChargeLimitOverrideToggleView: View {
             Toggle(
                 "Charge Limit Override",
                 isOn: Binding(
-                    get: { chargingCoordinator.chargeLimitOverrideActive },
-                    set: { _ in chargingCoordinator.toggleChargeLimitOverride() }
+                    get: { controls.chargeLimitOverrideActive },
+                    set: { controls.setChargeLimitOverride($0) }
                 )
             )
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.mini)
-            .disabled(chargingCoordinator.forceDischargeActive)
+            .disabled(controls.forceDischargeActive)
         }
-        .foregroundColor(.secondary)
+        .foregroundStyle(.secondary)
         .font(.callout)
         .padding(.horizontal, 14)
         .padding(.vertical, 4)
@@ -27,7 +27,7 @@ struct ChargeLimitOverrideToggleView: View {
 }
 
 struct ForceDischargeToggleView: View {
-    let chargingCoordinator: ChargingCoordinator
+    let controls: ChargingTemporaryControlsModel
 
     var body: some View {
         HStack {
@@ -36,16 +36,16 @@ struct ForceDischargeToggleView: View {
             Toggle(
                 "Force Discharge",
                 isOn: Binding(
-                    get: { chargingCoordinator.forceDischargeActive },
-                    set: { _ in chargingCoordinator.toggleForceDischarge() }
+                    get: { controls.forceDischargeActive },
+                    set: { controls.setForceDischarge($0) }
                 )
             )
             .labelsHidden()
             .toggleStyle(.switch)
             .controlSize(.mini)
-            .disabled(chargingCoordinator.chargeLimitOverrideActive)
+            .disabled(controls.chargeLimitOverrideActive)
         }
-        .foregroundColor(.secondary)
+        .foregroundStyle(.secondary)
         .font(.callout)
         .padding(.horizontal, 14)
         .padding(.vertical, 4)

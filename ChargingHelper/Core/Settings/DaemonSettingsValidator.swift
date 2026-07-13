@@ -1,5 +1,4 @@
 import Foundation
-import smc_power
 
 enum DaemonSettingsValidationError: Error, Equatable, Sendable {
     case incompatibleSchema(expected: Int, actual: Int)
@@ -30,11 +29,16 @@ struct DaemonSettingsValidator: Sendable {
         guard Self.sailingDeltaRange.contains(candidate.sailingDelta) else {
             throw DaemonSettingsValidationError.sailingDeltaOutOfRange(candidate.sailingDelta)
         }
-        guard candidate.chargeLimit - candidate.sailingDelta >= 0 else {
-            throw DaemonSettingsValidationError.invalidSailingThreshold(
-                chargeLimit: candidate.chargeLimit,
-                sailingDelta: candidate.sailingDelta
-            )
+        if candidate.sailingModeEnabled {
+            let resumeThreshold = candidate.chargeLimit - candidate.sailingDelta
+            guard candidate.sailingDelta > 0,
+                  resumeThreshold >= Self.chargeLimitRange.lowerBound
+            else {
+                throw DaemonSettingsValidationError.invalidSailingThreshold(
+                    chargeLimit: candidate.chargeLimit,
+                    sailingDelta: candidate.sailingDelta
+                )
+            }
         }
         guard Self.heatProtectionLimitRange.contains(candidate.heatProtectionLimit) else {
             throw DaemonSettingsValidationError.heatProtectionLimitOutOfRange(

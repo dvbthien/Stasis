@@ -1,5 +1,4 @@
 import SwiftUI
-import smc_power
 
 struct ChargingMagSafeLEDSection: View {
   @Binding var manageMagSafeLED: Bool

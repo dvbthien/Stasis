@@ -5,7 +5,7 @@ import SwiftUI
 /// Builds the status-item's `NSMenu` content out of small SwiftUI views,
 /// each hosted via `NSHostingView`.
 ///
-/// Each of those views reads `BatteryService`/`ChargingCoordinator`
+/// Each of those views reads app telemetry or daemon-owned state
 /// directly and computes its own `BatteryDisplayInfo` inside `body` — the
 /// MV pattern. Because `body` reads `@Observable` properties
 /// (`batteryService.metrics`, `.adapterMetrics`), SwiftUI re-invokes it
@@ -14,18 +14,16 @@ import SwiftUI
 @MainActor
 class MenuBuilder {
     private let batteryService: BatteryService
-    private let chargingCoordinator: ChargingCoordinator
+    private let chargingControls = ChargingTemporaryControlsModel()
     private let uptimeClock: UptimeClock
     private let settingsWindowController: SettingsWindowController
 
     init(
         batteryService: BatteryService,
-        chargingCoordinator: ChargingCoordinator,
         uptimeClock: UptimeClock,
         settingsWindowController: SettingsWindowController
     ) {
         self.batteryService = batteryService
-        self.chargingCoordinator = chargingCoordinator
         self.uptimeClock = uptimeClock
         self.settingsWindowController = settingsWindowController
     }
@@ -63,9 +61,9 @@ class MenuBuilder {
         {
             menu.addItem(NSMenuItem.separator())
             menu.addItem(
-                createMenuItem(view: ChargeLimitOverrideToggleView(chargingCoordinator: chargingCoordinator)))
+                createMenuItem(view: ChargeLimitOverrideToggleView(controls: chargingControls)))
             menu.addItem(
-                createMenuItem(view: ForceDischargeToggleView(chargingCoordinator: chargingCoordinator)))
+                createMenuItem(view: ForceDischargeToggleView(controls: chargingControls)))
         }
 
         menu.addItem(NSMenuItem.separator())

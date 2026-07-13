@@ -1,15 +1,6 @@
 import Foundation
 import SMCKit
 
-public enum MagSafeLEDState: UInt8, Codable, Sendable {
-    case reset = 0
-    case off = 1
-    case green = 3
-    case orange = 4
-    case blinkOrangeSlow = 6
-    case blinkOrangeFast = 7
-}
-
 public enum SMCAdapterError: Error, Equatable, Sendable {
     case powerControlNotSupported
     case magSafeNotSupported
@@ -108,20 +99,25 @@ public struct SMCAdapter: Sendable {
         return true
     }
 
-    public func getMagSafeLEDState() throws -> MagSafeLEDState {
+    public func getMagSafeLEDStateRawValue() throws -> UInt8 {
         guard hasMagSafeLEDKey else { throw SMCAdapterError.magSafeNotSupported }
         let data = try read(.magSafeLED, expectedSize: 1)
         let raw = data[data.startIndex]
-        guard let state = MagSafeLEDState(rawValue: raw) else {
+        guard Self.validMagSafeLEDRawValues.contains(raw) else {
             throw SMCAdapterError.unknownLEDState(raw)
         }
-        return state
+        return raw
     }
 
-    public func setMagSafeLEDState(_ state: MagSafeLEDState) throws {
+    public func setMagSafeLEDStateRawValue(_ rawValue: UInt8) throws {
         guard hasMagSafeLEDKey else { throw SMCAdapterError.magSafeNotSupported }
-        try transport.write(Data([state.rawValue]), to: .magSafeLED)
+        guard Self.validMagSafeLEDRawValues.contains(rawValue) else {
+            throw SMCAdapterError.unknownLEDState(rawValue)
+        }
+        try transport.write(Data([rawValue]), to: .magSafeLED)
     }
+
+    private static let validMagSafeLEDRawValues: Set<UInt8> = [0, 1, 3, 4, 6, 7]
 
     private func read(_ key: SMCControlKey, expectedSize: Int) throws -> Data {
         let data = try transport.read(key)

@@ -13,18 +13,8 @@ class ChargingDaemonManager {
 
   private let service: SMAppService
   private var connection: NSXPCConnection?
-  @ObservationIgnored private lazy var callbackReceiver = ChargingDaemonCallbackReceiver(
-    stateDidChange: { [weak self] payload in
-      Task { @MainActor in
-        self?.receiveSnapshot(payload)
-      }
-    },
-    settingsDidChange: { [weak self] payload in
-      Task { @MainActor in
-        self?.receiveSettings(payload)
-      }
-    }
-  )
+  @ObservationIgnored private var callbackReceiver: ChargingDaemonCallbackReceiver?
+  private var snapshotAuthority = ChargingDaemonSnapshotAuthority()
 
   private let logger = Logger.stasis("ChargingDaemonManager")
 
@@ -32,6 +22,10 @@ class ChargingDaemonManager {
   private(set) var connectionStatus: ChargingDaemonConnectionStatus = .disconnected
   private(set) var daemonSettingsState: DaemonSettingsState?
   private(set) var daemonSnapshot: DaemonSnapshot?
+
+  var hasFreshDaemonSnapshot: Bool {
+    snapshotAuthority.isAuthoritative && daemonSnapshot != nil
+  }
 
   var isInstalled: Bool {
     service.status == .enabled
@@ -63,11 +57,40 @@ class ChargingDaemonManager {
     refreshStatus()
   }
 
-  func uninstall() throws {
+  func uninstall() async throws {
     logger.info("Unregistering charging daemon")
+    var preparedDaemon = false
+    if service.status == .enabled {
+      try await executeCommand("Prepare charging daemon for uninstall") { helper, reply in
+        helper.prepareForUninstall(authData: nil, reply: reply)
+      }
+      preparedDaemon = true
+    }
+
+    do {
+      try await service.unregister()
+    } catch {
+      if preparedDaemon {
+        await cancelUninstallPreparationAfterFailure()
+      }
+      throw error
+    }
     disconnect()
-    try service.unregister()
     helperStatus = .notInstalled
+  }
+
+  private func cancelUninstallPreparationAfterFailure() async {
+    do {
+      try await executeCommand("Cancel charging daemon uninstall preparation") { helper, reply in
+        helper.cancelUninstallPreparation { success in
+          reply(success, success ? nil : "Daemon rejected uninstall cancellation")
+        }
+      }
+    } catch {
+      logger.error(
+        "Could not resume charging management after uninstall failed: \(error.localizedDescription)"
+      )
+    }
   }
 
   func repairInstallation() async throws {
@@ -141,11 +164,13 @@ class ChargingDaemonManager {
 
   func setChargeLimitOverride(_ enabled: Bool) async throws {
     try await executeCommand("Set charge-limit override") { [weak self] helper, reply in
+      let generation = self?.snapshotAuthority.generation
       helper.setChargeLimitOverride(enabled: enabled) { response, errorMessage in
         Task { @MainActor in
           self?.handleSnapshotCommandResponse(
             response,
             errorMessage: errorMessage,
+            generation: generation,
             reply: reply
           )
         }
@@ -155,11 +180,13 @@ class ChargingDaemonManager {
 
   func setForceDischarge(_ enabled: Bool) async throws {
     try await executeCommand("Set force discharge") { [weak self] helper, reply in
+      let generation = self?.snapshotAuthority.generation
       helper.setForceDischarge(authData: nil, enabled: enabled) { response, errorMessage in
         Task { @MainActor in
           self?.handleSnapshotCommandResponse(
             response,
             errorMessage: errorMessage,
+            generation: generation,
             reply: reply
           )
         }
@@ -230,6 +257,7 @@ class ChargingDaemonManager {
 
   private func connect() {
     connectionStatus = .connecting
+    let generation = snapshotAuthority.beginConnection()
     logger.info("Setting up XPC connection to charging daemon")
     let newConnection = NSXPCConnection(
       machServiceName: Self.machServiceName
@@ -240,22 +268,30 @@ class ChargingDaemonManager {
     newConnection.exportedInterface = NSXPCInterface(
       with: ChargingDaemonClientProtocol.self
     )
-    newConnection.exportedObject = callbackReceiver
+    let receiver = makeCallbackReceiver(for: generation)
+    callbackReceiver = receiver
+    newConnection.exportedObject = receiver
 
     newConnection.invalidationHandler = { [weak self, weak newConnection] in
       Task { @MainActor in
         guard let self else { return }
         self.logger.warning("Charging daemon XPC connection invalidated")
-        if self.connection === newConnection {
+        if self.connection === newConnection, self.snapshotAuthority.isCurrent(generation) {
           self.connection = nil
+          self.callbackReceiver = nil
+          self.snapshotAuthority.invalidate(generation)
           self.connectionStatus = .invalidated
         }
       }
     }
 
-    newConnection.interruptionHandler = { [weak self] in
+    newConnection.interruptionHandler = { [weak self, weak newConnection] in
       Task { @MainActor in
-        guard let self else { return }
+        guard let self,
+          self.connection === newConnection,
+          self.snapshotAuthority.isCurrent(generation)
+        else { return }
+        self.snapshotAuthority.revoke(generation)
         self.connectionStatus = .interrupted
         self.logger.warning(
           "Charging daemon XPC connection interrupted; keeping connection for automatic recovery")
@@ -264,7 +300,7 @@ class ChargingDaemonManager {
 
     newConnection.resume()
     connection = newConnection
-    synchronizeInitialState()
+    synchronizeInitialState(generation: generation)
   }
 
   func disconnect() {
@@ -273,11 +309,11 @@ class ChargingDaemonManager {
   }
 
   private func invalidateActiveConnection() {
-    guard let activeConnection = connection else {
-      return
-    }
+    let activeConnection = connection
     connection = nil
-    activeConnection.invalidate()
+    callbackReceiver = nil
+    snapshotAuthority.invalidateCurrentGeneration()
+    activeConnection?.invalidate()
   }
 
   private func executeCommandAttempt(
@@ -373,18 +409,38 @@ class ChargingDaemonManager {
     }
   }
 
-  private func synchronizeInitialState() {
+  private func isActiveConnection(_ generation: UInt64) -> Bool {
+    snapshotAuthority.isCurrent(generation) && connection != nil
+  }
+
+  private func makeCallbackReceiver(for generation: UInt64) -> ChargingDaemonCallbackReceiver {
+    ChargingDaemonCallbackReceiver(
+      stateDidChange: { [weak self] payload in
+        Task { @MainActor in
+          self?.receiveSnapshot(payload, generation: generation)
+        }
+      },
+      settingsDidChange: { [weak self] payload in
+        Task { @MainActor in
+          self?.receiveSettings(payload, generation: generation)
+        }
+      }
+    )
+  }
+
+  private func synchronizeInitialState(generation: UInt64) {
     guard
       let helper = getHelper(errorHandler: { [weak self] error in
         Task { @MainActor in
-          self?.recordRuntimeError(error, while: "Initial daemon settings sync")
+          guard let self, self.isActiveConnection(generation) else { return }
+          self.recordRuntimeError(error, while: "Initial daemon settings sync")
         }
       })
     else { return }
 
     helper.getSettings { [weak self] payload, errorMessage in
       Task { @MainActor in
-        guard let self else { return }
+        guard let self, self.isActiveConnection(generation) else { return }
         guard let payload else {
           self.connectionStatus = .runtimeFailed(
             errorMessage ?? "Daemon did not return settings"
@@ -395,10 +451,10 @@ class ChargingDaemonManager {
         do {
           let state = try DaemonPayloadCodec.decode(DaemonSettingsState.self, from: payload)
           if state.needsLegacyImport {
-            self.importLegacySettings()
+            self.importLegacySettings(generation: generation)
           } else {
             self.daemonSettingsState = state
-            self.requestInitialSnapshot()
+            self.requestInitialSnapshot(generation: generation)
           }
         } catch {
           self.recordRuntimeError(error, while: "Decode daemon settings")
@@ -407,19 +463,20 @@ class ChargingDaemonManager {
     }
   }
 
-  private func importLegacySettings() {
+  private func importLegacySettings(generation: UInt64) {
     guard
       let payload = try? DaemonPayloadCodec.encode(DaemonSettings.currentAppDefaults),
       let helper = getHelper(errorHandler: { [weak self] error in
         Task { @MainActor in
-          self?.recordRuntimeError(error, while: "Legacy settings import")
+          guard let self, self.isActiveConnection(generation) else { return }
+          self.recordRuntimeError(error, while: "Legacy settings import")
         }
       })
     else { return }
 
     helper.importLegacySettings(payload: payload) { [weak self] response, errorMessage in
       Task { @MainActor in
-        guard let self else { return }
+        guard let self, self.isActiveConnection(generation) else { return }
         guard let response else {
           self.connectionStatus = .runtimeFailed(
             errorMessage ?? "Daemon rejected legacy settings import"
@@ -431,7 +488,7 @@ class ChargingDaemonManager {
             DaemonSettingsState.self,
             from: response
           )
-          self.requestInitialSnapshot()
+          self.requestInitialSnapshot(generation: generation)
         } catch {
           self.recordRuntimeError(error, while: "Decode imported daemon settings")
         }
@@ -439,31 +496,32 @@ class ChargingDaemonManager {
     }
   }
 
-  private func requestInitialSnapshot() {
+  private func requestInitialSnapshot(generation: UInt64) {
     guard
       let helper = getHelper(errorHandler: { [weak self] error in
         Task { @MainActor in
-          self?.recordRuntimeError(error, while: "Initial daemon snapshot sync")
+          guard let self, self.isActiveConnection(generation) else { return }
+          self.recordRuntimeError(error, while: "Initial daemon snapshot sync")
         }
       })
     else { return }
 
     helper.getSnapshot { [weak self] payload, errorMessage in
       Task { @MainActor in
-        guard let self else { return }
+        guard let self, self.isActiveConnection(generation) else { return }
         guard let payload else {
           self.connectionStatus = .runtimeFailed(
             errorMessage ?? "Daemon did not return a snapshot"
           )
           return
         }
-        self.receiveSnapshot(payload)
-        self.connectionStatus = .connected
+        self.receiveSnapshot(payload, generation: generation)
       }
     }
   }
 
-  private func receiveSettings(_ payload: Data) {
+  private func receiveSettings(_ payload: Data, generation: UInt64) {
+    guard isActiveConnection(generation) else { return }
     do {
       daemonSettingsState = try DaemonPayloadCodec.decode(
         DaemonSettingsState.self,
@@ -474,9 +532,11 @@ class ChargingDaemonManager {
     }
   }
 
-  private func receiveSnapshot(_ payload: Data) {
+  private func receiveSnapshot(_ payload: Data, generation: UInt64) {
+    guard isActiveConnection(generation) else { return }
     do {
       daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
+      snapshotAuthority.markAuthoritative(generation)
       // A valid callback also proves that an interrupted XPC connection has
       // recovered. This switches BatteryService back from its local fallback.
       connectionStatus = .connected
@@ -488,18 +548,63 @@ class ChargingDaemonManager {
   private func handleSnapshotCommandResponse(
     _ payload: Data?,
     errorMessage: String?,
+    generation: UInt64?,
     reply: @escaping @Sendable (Bool, String?) -> Void
   ) {
+    guard let generation, isActiveConnection(generation) else {
+      reply(false, "Charging daemon connection changed before the command completed")
+      return
+    }
     guard let payload else {
       reply(false, errorMessage ?? "Daemon did not return an updated snapshot")
       return
     }
     do {
       daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
+      snapshotAuthority.markAuthoritative(generation)
       reply(true, nil)
     } catch {
       reply(false, "Invalid daemon snapshot response: \(error.localizedDescription)")
     }
+  }
+}
+
+struct ChargingDaemonSnapshotAuthority {
+  private(set) var generation: UInt64 = 0
+  private(set) var authoritativeGeneration: UInt64?
+
+  var isAuthoritative: Bool {
+    authoritativeGeneration == generation
+  }
+
+  mutating func beginConnection() -> UInt64 {
+    generation &+= 1
+    authoritativeGeneration = nil
+    return generation
+  }
+
+  func isCurrent(_ candidate: UInt64) -> Bool {
+    candidate == generation
+  }
+
+  mutating func markAuthoritative(_ candidate: UInt64) {
+    guard isCurrent(candidate) else { return }
+    authoritativeGeneration = candidate
+  }
+
+  mutating func revoke(_ candidate: UInt64) {
+    guard isCurrent(candidate) else { return }
+    authoritativeGeneration = nil
+  }
+
+  mutating func invalidate(_ candidate: UInt64) {
+    guard isCurrent(candidate) else { return }
+    invalidateCurrentGeneration()
+  }
+
+  mutating func invalidateCurrentGeneration() {
+    generation &+= 1
+    authoritativeGeneration = nil
   }
 }
 

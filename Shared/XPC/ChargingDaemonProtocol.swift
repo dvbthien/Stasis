@@ -4,8 +4,7 @@ import Foundation
 ///
 /// All structured values travel as encoded `Data`, so both XPC interfaces only
 /// use Foundation classes and need no custom allowed-class configuration.
-/// Primitive SMC methods remain temporarily for app-policy compatibility and
-/// are removed after policy ownership moves to the daemon.
+/// Charging policy and every SMC write remain private to the daemon.
 @objc protocol ChargingDaemonProtocol {
     func checkHealth(reply: @escaping @Sendable (Data?, String?) -> Void)
     func getSnapshot(reply: @escaping @Sendable (Data?, String?) -> Void)
@@ -38,18 +37,12 @@ import Foundation
         reply: @escaping @Sendable (Bool) -> Void
     )
 
-    func manageBatteryCharging(
-        enabled: Bool,
+    func prepareForUninstall(
+        authData: Data?,
         reply: @escaping @Sendable (Bool, String?) -> Void
     )
 
-    func manageExternalPower(
-        enabled: Bool,
-        reply: @escaping @Sendable (Bool, String?) -> Void
-    )
-
-    func manageMagsafeLED(
-        target: UInt8,
-        reply: @escaping @Sendable (Bool, String?) -> Void
+    func cancelUninstallPreparation(
+        reply: @escaping @Sendable (Bool) -> Void
     )
 }

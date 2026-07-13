@@ -14,6 +14,7 @@ protocol ChargingSettingsManaging: AnyObject {
 extension ChargingDaemonManager: ChargingSettingsManaging {}
 
 struct ChargingSettingsAvailability: Equatable {
+  let isResolved: Bool
   let management: Bool
   let sailingMode: Bool
   let automaticDischarge: Bool
@@ -21,7 +22,15 @@ struct ChargingSettingsAvailability: Equatable {
   let heatProtection: Bool
   let magSafeLED: Bool
 
+  /// An unresolved capability set means the daemon has not returned its
+  /// first snapshot yet. The UI must still allow starting/installing the
+  /// daemon so it can perform capability probing.
+  var canAttemptManagement: Bool {
+    !isResolved || management
+  }
+
   init(capabilities: DaemonCapabilities?) {
+    isResolved = capabilities != nil
     management = capabilities?.chargingControl ?? false
     sailingMode = capabilities?.sailingModeControl ?? false
     automaticDischarge = capabilities?.automaticDischargeControl ?? false

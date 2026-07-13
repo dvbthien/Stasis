@@ -1,6 +1,5 @@
 import Defaults
 import Foundation
-import smc_power
 
 extension MagSafeLEDState: Defaults.Serializable {}
 

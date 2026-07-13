@@ -8,6 +8,7 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
     private let commandHandler: ChargingDaemonCommandHandler
     private let clientValidator: any DaemonClientValidating
     private let clients: DaemonClientRegistry
+    private var isRunning = false
     private let logger = Logger(
         subsystem: "com.srimanachanta.stasis-daemon",
         category: "XPCServer"
@@ -28,8 +29,16 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
     }
 
     func start() {
+        guard !isRunning else { return }
         listener.delegate = self
         listener.resume()
+        isRunning = true
+    }
+
+    func stop() {
+        guard isRunning else { return }
+        listener.suspend()
+        isRunning = false
     }
 
     func listener(

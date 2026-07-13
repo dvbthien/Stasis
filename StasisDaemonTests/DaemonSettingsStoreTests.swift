@@ -76,6 +76,78 @@ final class DaemonSettingsStoreTests: XCTestCase {
         XCTAssertEqual(try persistence.load(), persistedBefore)
     }
 
+    func testEnabledSailingRejectsResumeThresholdBelowUIRangeWithoutPersisting() async throws {
+        let persistence = InMemoryDaemonSettingsPersistence()
+        let store = try DaemonSettingsStore(
+            persistence: persistence,
+            capabilities: legacyCapabilities
+        )
+        let before = await store.state()
+        let persistedBefore = try persistence.load()
+        var invalid = settings(chargeLimit: 69)
+        invalid.sailingDelta = 20
+
+        do {
+            _ = try await store.setSettings(invalid)
+            XCTFail("Expected sailing threshold below 50% to be rejected")
+        } catch {
+            XCTAssertEqual(
+                error as? DaemonSettingsValidationError,
+                .invalidSailingThreshold(chargeLimit: 69, sailingDelta: 20)
+            )
+        }
+
+        let after = await store.state()
+        XCTAssertEqual(after, before)
+        XCTAssertEqual(try persistence.load(), persistedBefore)
+    }
+
+    func testEnabledSailingAcceptsResumeThresholdAtUIRangeBoundary() async throws {
+        let store = try DaemonSettingsStore(
+            persistence: InMemoryDaemonSettingsPersistence(),
+            capabilities: legacyCapabilities
+        )
+        var boundary = settings(chargeLimit: 70)
+        boundary.sailingDelta = 20
+
+        let saved = try await store.setSettings(boundary)
+
+        XCTAssertEqual(saved.settings, boundary)
+    }
+
+    func testEnabledSailingRejectsZeroDelta() async throws {
+        let store = try DaemonSettingsStore(
+            persistence: InMemoryDaemonSettingsPersistence(),
+            capabilities: legacyCapabilities
+        )
+        var invalid = settings(chargeLimit: 80)
+        invalid.sailingDelta = 0
+
+        do {
+            _ = try await store.setSettings(invalid)
+            XCTFail("Expected enabled sailing with equal lower and upper limits to be rejected")
+        } catch {
+            XCTAssertEqual(
+                error as? DaemonSettingsValidationError,
+                .invalidSailingThreshold(chargeLimit: 80, sailingDelta: 0)
+            )
+        }
+    }
+
+    func testDisabledSailingDoesNotApplyResumeThresholdValidation() async throws {
+        let store = try DaemonSettingsStore(
+            persistence: InMemoryDaemonSettingsPersistence(),
+            capabilities: legacyCapabilities
+        )
+        var candidate = settings(chargeLimit: 50)
+        candidate.sailingModeEnabled = false
+        candidate.sailingDelta = 20
+
+        let saved = try await store.setSettings(candidate)
+
+        XCTAssertEqual(saved.settings, candidate)
+    }
+
     func testPersistenceFailureKeepsLastConfirmedSettings() async throws {
         let persistence = InMemoryDaemonSettingsPersistence()
         let store = try DaemonSettingsStore(

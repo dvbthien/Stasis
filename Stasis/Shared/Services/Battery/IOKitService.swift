@@ -11,12 +11,18 @@ class IOKitService {
     private var batteryService: io_service_t = 0
 
     private var continuation: AsyncStream<(BatteryMetrics, AdapterMetrics)>.Continuation?
+    private var nextStreamID: UInt64 = 0
+    private var activeStreamID: UInt64?
 
     private let logger = Logger.stasis("IOKitService")
 
     func metricsStream() -> AsyncStream<(BatteryMetrics, AdapterMetrics)> {
-// Tránh capture mạnh `self` bằng cách xử lý tách biệt cấu trúc
-        AsyncStream { [weak self] continuation in
+        stopMonitoring()
+        nextStreamID &+= 1
+        let streamID = nextStreamID
+        activeStreamID = streamID
+
+        return AsyncStream { [weak self] continuation in
             guard let self else {
                 continuation.finish()
                 return
@@ -25,14 +31,20 @@ class IOKitService {
             self.continuation = continuation
 
             continuation.onTermination = { [weak self] _ in
-                // Chạy trên MainActor an toàn mà không làm rò rỉ instance
                 Task { @MainActor in
-                    self?.stop()
+                    self?.stopMonitoring(streamID: streamID)
                 }
             }
 
             self.startNotifications()
         }
+    }
+
+    /// Stops the current fallback session. A terminated older stream cannot
+    /// tear down a newer session because termination is scoped by stream ID.
+    func stopMonitoring() {
+        activeStreamID = nil
+        tearDownMonitoring()
     }
 
     private func startNotifications() {
@@ -88,7 +100,16 @@ class IOKitService {
         emitMetrics()
     }
 
-    private func stop() {
+    private func stopMonitoring(streamID: UInt64) {
+        guard activeStreamID == streamID else { return }
+        activeStreamID = nil
+        tearDownMonitoring()
+    }
+
+    private func tearDownMonitoring() {
+        let activeContinuation = continuation
+        continuation = nil
+
         if interestNotification != 0 {
             IOObjectRelease(interestNotification)
             interestNotification = 0
@@ -103,7 +124,7 @@ class IOKitService {
             IOObjectRelease(batteryService)
             batteryService = 0
         }
-        continuation = nil
+        activeContinuation?.finish()
     }
 
     private func emitMetrics() {

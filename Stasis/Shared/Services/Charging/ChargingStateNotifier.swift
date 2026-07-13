@@ -37,7 +37,7 @@ struct ChargingNotificationTransitionTracker {
 /// notified state so repeated evaluations with the same outcome don't spam
 /// duplicate notifications.
 ///
-/// Pulled out of `ChargingCoordinator` so the notification de-duplication state
+/// Keeps notification de-duplication state
 /// (`lastNotifiedChargingState`) and delivery logic live next to each
 /// other, separate from charging policy itself.
 @MainActor
