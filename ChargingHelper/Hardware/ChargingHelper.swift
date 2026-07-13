@@ -81,6 +81,21 @@ actor ChargingHelper: DaemonHardwareControlling {
     )
   }
 
+  func readTelemetry() -> DaemonTelemetryReading {
+    let batteryTelemetry = readBatteryTelemetry()
+    let adapterTelemetry = readAdapterTelemetry()
+    return DaemonTelemetryReading(
+      batteryAvailable: batteryTelemetry.available,
+      adapterAvailable: adapterTelemetry.available,
+      batteryVoltage: batteryTelemetry.voltage,
+      batteryCurrent: batteryTelemetry.current,
+      batteryPower: batteryTelemetry.power,
+      adapterVoltage: adapterTelemetry.voltage,
+      adapterCurrent: adapterTelemetry.current,
+      adapterPower: adapterTelemetry.power
+    )
+  }
+
   func resetToDefaults() {
     do {
       if battery.capabilities.inhibitChargeControl {
@@ -95,6 +110,40 @@ actor ChargingHelper: DaemonHardwareControlling {
       logger.info("SMC keys reset to defaults")
     } catch {
       logger.error("resetToDefaults failed: \(error.localizedDescription)")
+    }
+  }
+
+  private func readBatteryTelemetry() -> (
+    available: Bool,
+    voltage: Double,
+    current: Double,
+    power: Double
+  ) {
+    do {
+      let voltage = try SMCBattery.getVoltage()
+      let current = try SMCBattery.getCurrent()
+      return (true, voltage, current, voltage * current)
+    } catch {
+      logger.error("SMC battery telemetry read failed: \(error.localizedDescription)")
+      return (false, 0, 0, 0)
+    }
+  }
+
+  private func readAdapterTelemetry() -> (
+    available: Bool,
+    voltage: Double,
+    current: Double,
+    power: Double
+  ) {
+    do {
+      var voltage = try SMCAdapter.getVoltage()
+      var current = try SMCAdapter.getCurrent()
+      if abs(voltage) < 0.1 { voltage = 0 }
+      if abs(current) < 0.1 { current = 0 }
+      return (true, voltage, current, voltage * current)
+    } catch {
+      logger.error("SMC adapter telemetry read failed: \(error.localizedDescription)")
+      return (false, 0, 0, 0)
     }
   }
 }

@@ -2,20 +2,22 @@ import Foundation
 
 actor DaemonStateStore {
     private let capabilities: DaemonCapabilities
-    private let hardware: any DaemonHardwareControlling
     private let daemonVersion: String
+
+    private var battery = DaemonBatterySnapshot()
+    private var adapter = DaemonAdapterSnapshot()
+    private var hardwareState = DaemonHardwareState()
+    private var runtimeStatus: DaemonRuntimeStatus = .starting
+    private var lastError: DaemonErrorPayload?
 
     private var chargeLimitOverrideActive = false
     private var forceDischargeActive = false
-    private var telemetryActive = false
 
     init(
         capabilities: DaemonCapabilities,
-        hardware: any DaemonHardwareControlling,
         daemonVersion: String
     ) {
         self.capabilities = capabilities
-        self.hardware = hardware
         self.daemonVersion = daemonVersion
     }
 
@@ -45,35 +47,66 @@ actor DaemonStateStore {
         }
     }
 
-    func setTelemetryActive(_ active: Bool) {
-        telemetryActive = active
+    @discardableResult
+    func updatePowerSource(_ update: DaemonPowerSourceUpdate) -> Bool {
+        let adapterConnectionChanged =
+            adapter.physicallyConnected != update.adapter.physicallyConnected
+        let telemetry = DaemonTelemetryReading(
+            batteryVoltage: battery.voltage,
+            batteryCurrent: battery.current,
+            batteryPower: battery.power,
+            adapterVoltage: adapter.voltage,
+            adapterCurrent: adapter.current,
+            adapterPower: adapter.power
+        )
+
+        battery = update.battery
+        adapter = update.adapter
+        updateTelemetry(telemetry)
+        return adapterConnectionChanged
     }
 
-    func snapshot(settingsState: DaemonSettingsState) async -> DaemonSnapshot {
-        let hardwareState: DaemonHardwareState
-        let runtimeStatus: DaemonRuntimeStatus
-        let lastError: DaemonErrorPayload?
+    @discardableResult
+    func updateTelemetry(_ reading: DaemonTelemetryReading) -> Bool {
+        let oldBattery = battery
+        let oldAdapter = adapter
 
-        do {
-            hardwareState = try await hardware.readHardwareState()
-            runtimeStatus = capabilities.chargingControl ? .ready : .unsupported
-            lastError = nil
-        } catch {
-            hardwareState = DaemonHardwareState()
-            runtimeStatus = .degraded
-            lastError = DaemonErrorPayload(
-                code: .smcFailure,
-                message: error.localizedDescription
-            )
+        battery.voltage = reading.batteryVoltage
+        battery.current = reading.batteryCurrent
+        battery.power = reading.batteryPower
+        adapter.voltage = reading.adapterVoltage
+        adapter.current = reading.adapterCurrent
+        adapter.power = reading.adapterPower
+
+        if adapter.physicallyConnected, reading.batteryAvailable {
+            battery.isCharging = reading.batteryPower > 0
         }
 
+        return battery != oldBattery || adapter != oldAdapter
+    }
+
+    func updateHardwareState(_ state: DaemonHardwareState) {
+        hardwareState = state
+        adapter.powerEnabled = state.forceDischarging.map { !$0 }
+        runtimeStatus = capabilities.chargingControl ? .ready : .unsupported
+        lastError = nil
+    }
+
+    func recordHardwareError(_ error: Error) {
+        hardwareState = DaemonHardwareState()
+        adapter.powerEnabled = nil
+        runtimeStatus = .degraded
+        lastError = DaemonErrorPayload(
+            code: .smcFailure,
+            message: error.localizedDescription
+        )
+    }
+
+    func snapshot(settingsState: DaemonSettingsState) -> DaemonSnapshot {
         return DaemonSnapshot(
             capabilities: capabilities,
-            battery: DaemonBatterySnapshot(),
-            adapter: DaemonAdapterSnapshot(
-                physicallyConnected: false,
-                powerEnabled: hardwareState.forceDischarging.map { !$0 }
-            ),
+            battery: battery,
+            adapter: adapter,
             hardware: hardwareState,
             policy: DaemonPolicyState(
                 managementEnabled: settingsState.settings.managementEnabled,

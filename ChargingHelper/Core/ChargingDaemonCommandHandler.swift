@@ -4,25 +4,50 @@ import smc_power
 final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unchecked Sendable {
     private let settingsStore: DaemonSettingsStore
     private let stateStore: DaemonStateStore
+    private let runtime: DaemonRuntimeCoordinator
     private let hardware: any DaemonHardwareControlling
     private let capabilities: DaemonCapabilities
     private let daemonVersion: String
     private let clients: DaemonClientRegistry
+    private let clientID: UUID
 
     init(
         settingsStore: DaemonSettingsStore,
         stateStore: DaemonStateStore,
+        runtime: DaemonRuntimeCoordinator,
         hardware: any DaemonHardwareControlling,
         capabilities: DaemonCapabilities,
         daemonVersion: String,
-        clients: DaemonClientRegistry
+        clients: DaemonClientRegistry,
+        clientID: UUID = UUID()
     ) {
         self.settingsStore = settingsStore
         self.stateStore = stateStore
+        self.runtime = runtime
         self.hardware = hardware
         self.capabilities = capabilities
         self.daemonVersion = daemonVersion
         self.clients = clients
+        self.clientID = clientID
+    }
+
+    func scoped(to clientID: UUID) -> ChargingDaemonCommandHandler {
+        ChargingDaemonCommandHandler(
+            settingsStore: settingsStore,
+            stateStore: stateStore,
+            runtime: runtime,
+            hardware: hardware,
+            capabilities: capabilities,
+            daemonVersion: daemonVersion,
+            clients: clients,
+            clientID: clientID
+        )
+    }
+
+    func connectionInvalidated() {
+        Task { [runtime, clientID] in
+            await runtime.clientDisconnected(clientID)
+        }
     }
 
     func checkHealth(reply: @escaping @Sendable (Data?, String?) -> Void) {
@@ -37,9 +62,8 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
     }
 
     func getSnapshot(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        respond(reply: reply) { [settingsStore, stateStore] in
-            let settingsState = await settingsStore.state()
-            return await stateStore.snapshot(settingsState: settingsState)
+        respond(reply: reply) { [runtime] in
+            await runtime.currentSnapshot()
         }
     }
 
@@ -68,13 +92,10 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         enabled: Bool,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        respond(reply: reply) { [settingsStore, stateStore, clients] in
+        respond(reply: reply) { [stateStore, runtime] in
             try await stateStore.setChargeLimitOverride(enabled)
-            let settingsState = await settingsStore.state()
-            let snapshot = await stateStore.snapshot(settingsState: settingsState)
-            if let payload = try? DaemonPayloadCodec.encode(snapshot) {
-                clients.publishSnapshot(payload)
-            }
+            let snapshot = await runtime.currentSnapshot(refreshHardware: false)
+            await runtime.publishCurrentSnapshot()
             return snapshot
         }
     }
@@ -84,13 +105,10 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         enabled: Bool,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        respond(reply: reply) { [settingsStore, stateStore, clients] in
+        respond(reply: reply) { [stateStore, runtime] in
             try await stateStore.setForceDischarge(enabled)
-            let settingsState = await settingsStore.state()
-            let snapshot = await stateStore.snapshot(settingsState: settingsState)
-            if let payload = try? DaemonPayloadCodec.encode(snapshot) {
-                clients.publishSnapshot(payload)
-            }
+            let snapshot = await runtime.currentSnapshot(refreshHardware: false)
+            await runtime.publishCurrentSnapshot()
             return snapshot
         }
     }
@@ -99,8 +117,8 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         _ active: Bool,
         reply: @escaping @Sendable (Bool) -> Void
     ) {
-        Task { [stateStore] in
-            await stateStore.setTelemetryActive(active)
+        Task { [runtime, clientID] in
+            await runtime.setTelemetryActive(active, for: clientID)
             reply(true)
         }
     }
@@ -137,7 +155,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         importLegacy: Bool,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        respond(reply: reply) { [settingsStore, stateStore, clients] in
+        respond(reply: reply) { [settingsStore, runtime, clients] in
             let settings = try DaemonPayloadCodec.decode(DaemonSettings.self, from: payload)
             let settingsState =
                 if importLegacy {
@@ -148,10 +166,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
 
             let settingsPayload = try DaemonPayloadCodec.encode(settingsState)
             clients.publishSettings(settingsPayload)
-            let snapshot = await stateStore.snapshot(settingsState: settingsState)
-            if let snapshotPayload = try? DaemonPayloadCodec.encode(snapshot) {
-                clients.publishSnapshot(snapshotPayload)
-            }
+            await runtime.publishCurrentSnapshot()
             return settingsState
         }
     }
@@ -173,9 +188,10 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         reply: @escaping @Sendable (Bool, String?) -> Void,
         operation: @escaping @Sendable () async throws -> Void
     ) {
-        Task {
+        Task { [runtime] in
             do {
                 try await operation()
+                await runtime.refreshAfterHardwareChange()
                 reply(true, nil)
             } catch {
                 reply(false, Self.errorMessage(for: error))

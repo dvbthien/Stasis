@@ -41,12 +41,18 @@ do {
 
 let stateStore = DaemonStateStore(
     capabilities: capabilities,
-    hardware: hardware,
     daemonVersion: daemonVersion
+)
+let runtime = DaemonRuntimeCoordinator(
+    settingsStore: settingsStore,
+    stateStore: stateStore,
+    hardware: hardware,
+    clients: clients
 )
 let commandHandler = ChargingDaemonCommandHandler(
     settingsStore: settingsStore,
     stateStore: stateStore,
+    runtime: runtime,
     hardware: hardware,
     capabilities: capabilities,
     daemonVersion: daemonVersion,
@@ -65,7 +71,18 @@ let server = StasisDaemonXPCServer(
     clientValidator: clientValidator,
     clients: clients
 )
-server.start()
-logger.info("Stasis daemon XPC server started")
+let ioKitMonitor = DaemonIOKitMonitor()
+Task { @MainActor in
+    let initialUpdate = ioKitMonitor.start { update in
+        Task {
+            await runtime.handlePowerSourceUpdate(update)
+        }
+    }
+    if let initialUpdate {
+        await runtime.handlePowerSourceUpdate(initialUpdate)
+    }
+    server.start()
+    logger.info("Stasis daemon XPC server started with initial IOKit snapshot")
+}
 
-dispatchMain()
+RunLoop.main.run()

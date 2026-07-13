@@ -92,6 +92,26 @@ class ChargingDaemonManager {
     }
   }
 
+  /// Starts the long-lived state callback connection when the daemon is
+  /// available. Battery rendering uses this independently of charging
+  /// management being enabled in Settings.
+  func startStateStreaming() {
+    refreshStatus()
+    guard service.status == .enabled else { return }
+    if connection == nil {
+      connect()
+    }
+  }
+
+  func setTelemetryActive(_ active: Bool) async throws {
+    try await executeCommand(active ? "Enable daemon telemetry" : "Disable daemon telemetry") {
+      helper, reply in
+      helper.setTelemetryActive(active) { success in
+        reply(success, success ? nil : "Daemon rejected telemetry demand")
+      }
+    }
+  }
+
   func getHelper(errorHandler: @escaping @Sendable (Error) -> Void) -> ChargingDaemonProtocol? {
     if connection == nil {
       connect()
@@ -402,6 +422,9 @@ class ChargingDaemonManager {
   private func receiveSnapshot(_ payload: Data) {
     do {
       daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
+      // A valid callback also proves that an interrupted XPC connection has
+      // recovered. This switches BatteryService back from its local fallback.
+      connectionStatus = .connected
     } catch {
       recordRuntimeError(error, while: "Decode daemon snapshot callback")
     }

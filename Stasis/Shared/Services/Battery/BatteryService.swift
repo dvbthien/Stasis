@@ -3,18 +3,9 @@ import Observation
 import os.log
 import smc_power
 
-/// Coordinates battery/adapter metrics from two independent sources — IOKit
-/// (event-driven, owns the displayed battery %, health, temperature, etc.)
-/// and the SMC helper via `SMCMetricsPoller` (polled, owns
-/// voltage/current/power for the Sankey power diagram) — and merges them
-/// into the single `metrics`/`adapterMetrics` the rest of the app observes.
-///
-/// This class deliberately does NOT touch `SMCReaderConnection` or any XPC
-/// connection directly. All of that lifecycle — when to connect, when to
-/// disconnect, what counts as "still in use" — is owned entirely by
-/// `SMCMetricsPoller`. That used to be split across several methods here
-/// (`loadCapabilities`, `disableFastPolling`), which is how a missed cleanup
-/// call site let the helper process stay alive for hours.
+/// Uses daemon snapshots as the authoritative source for the status icon and
+/// menu. The app-side IOKit monitor and read-only SMC helper remain available
+/// as an immediate fallback while the daemon is unavailable or reconnecting.
 @MainActor
 @Observable
 class BatteryService {
@@ -24,9 +15,19 @@ class BatteryService {
   private(set) var deviceCapabilities = DeviceCapabilities.unknown
 
   private let ioKitService = IOKitService()
+  private let daemonManager = ChargingDaemonManager.shared
   private var smcPoller: SMCMetricsPoller!
 
   private var ioKitMonitorTask: Task<Void, Never>?
+  private var daemonTelemetrySyncTask: Task<Void, Never>?
+
+  private var fallbackMetrics = BatteryMetrics()
+  private var fallbackAdapterMetrics = AdapterMetrics()
+  private var fallbackFastPollingActive = false
+  private var telemetryRequested = false
+  private var appliedDaemonTelemetry = false
+  private var desiredDaemonTelemetry = false
+  private var isStopped = false
 
   private let logger = Logger.stasis("BatteryService")
 
@@ -38,16 +39,19 @@ class BatteryService {
         self?.handleSMCReading(battery, adapter)
       }
     )
-    // The XPC connection to the SMC helper is created lazily by
-    // SMCMetricsPoller on first use, not eagerly here. The helper is an
-    // on-demand XPC Service: holding a connection open for the app's
-    // entire lifetime would keep that process alive continuously, even
-    // when nothing is polling it.
     startIOKitMonitoring()
+    daemonManager.startStateStreaming()
+    handleDaemonStateChange()
+    observeDaemonState()
     scheduleSinglePoll()
   }
 
   func loadCapabilities() async {
+    if let snapshot = authoritativeDaemonSnapshot {
+      applyCapabilities(snapshot.capabilities)
+      return
+    }
+
     guard let capabilities = await smcPoller.loadCapabilities() else {
       return
     }
@@ -55,6 +59,39 @@ class BatteryService {
     logger.info(
       "Capabilities loaded: charging=\(capabilities.chargingControl), adapter=\(capabilities.adapterControl), magSafe=\(capabilities.hasMagSafe)"
     )
+  }
+
+  private var authoritativeDaemonSnapshot: DaemonSnapshot? {
+    guard daemonManager.connectionStatus == .connected else { return nil }
+    return daemonManager.daemonSnapshot
+  }
+
+  private func observeDaemonState() {
+    guard !isStopped else { return }
+    withObservationTracking {
+      _ = daemonManager.connectionStatus
+      _ = daemonManager.daemonSnapshot
+    } onChange: { [weak self] in
+      Task { @MainActor in
+        guard let self, !self.isStopped else { return }
+        self.handleDaemonStateChange()
+        self.observeDaemonState()
+      }
+    }
+  }
+
+  private func handleDaemonStateChange() {
+    if let snapshot = authoritativeDaemonSnapshot {
+      applyDaemonSnapshot(snapshot)
+    } else {
+      applyFallbackSnapshot()
+      if appliedDaemonTelemetry {
+        // XPC invalidation/interruption removes this client's demand in the
+        // daemon, so no disable command is needed on a broken connection.
+        appliedDaemonTelemetry = false
+      }
+    }
+    synchronizeTelemetrySources()
   }
 
   private func startIOKitMonitoring() {
@@ -68,37 +105,94 @@ class BatteryService {
   }
 
   func enableFastPolling() {
-    smcPoller.start()
+    telemetryRequested = true
+    synchronizeTelemetrySources()
   }
 
   func disableFastPolling() {
-    smcPoller.stop()
+    telemetryRequested = false
+    synchronizeTelemetrySources()
   }
 
   func scheduleSinglePoll(delay: Duration = .seconds(3)) {
+    guard authoritativeDaemonSnapshot == nil else { return }
     smcPoller.scheduleSinglePoll(delay: delay)
-    logger.debug("Received SMC update")
+    logger.debug("Scheduled fallback SMC update")
   }
 
   private func handleSMCReading(
     _ batteryReading: SMCBatteryReading, _ adapterReading: SMCAdapterReading
   ) {
-    var updatedBattery = metrics
-    updatedBattery.batteryVoltage = batteryReading.batteryVoltage
-    updatedBattery.batteryCurrent = batteryReading.batteryCurrent
-    updatedBattery.batteryPower = batteryReading.batteryPower
+    fallbackMetrics.batteryVoltage = batteryReading.batteryVoltage
+    fallbackMetrics.batteryCurrent = batteryReading.batteryCurrent
+    fallbackMetrics.batteryPower = batteryReading.batteryPower
 
-    var updatedAdapter = adapterMetrics
-    updatedAdapter.adapterVoltage = adapterReading.adapterVoltage
-    updatedAdapter.adapterCurrent = adapterReading.adapterCurrent
-    updatedAdapter.adapterPower = adapterReading.adapterPower
+    fallbackAdapterMetrics.adapterVoltage = adapterReading.adapterVoltage
+    fallbackAdapterMetrics.adapterCurrent = adapterReading.adapterCurrent
+    fallbackAdapterMetrics.adapterPower = adapterReading.adapterPower
 
-    // SMC reports faster than IOKit can update, so refine isCharging
-    // using the actual power flow direction.
-    if updatedAdapter.adapterConnected {
-      updatedBattery.isCharging = batteryReading.batteryPower > 0
+    if fallbackAdapterMetrics.adapterConnected {
+      fallbackMetrics.isCharging = batteryReading.batteryPower > 0
     }
 
+    if authoritativeDaemonSnapshot == nil {
+      applyFallbackSnapshot()
+    }
+  }
+
+  private func handleIOKitUpdate(_ newBatteryMetrics: BatteryMetrics, adapterUpdate: AdapterMetrics)
+  {
+    logger.debug("Received fallback IOKit update")
+
+    var updatedBattery = newBatteryMetrics
+    updatedBattery.batteryVoltage = fallbackMetrics.batteryVoltage
+    updatedBattery.batteryCurrent = fallbackMetrics.batteryCurrent
+    updatedBattery.batteryPower = fallbackMetrics.batteryPower
+    fallbackMetrics = updatedBattery
+
+    var updatedAdapter = adapterUpdate
+    updatedAdapter.powerEnabled = fallbackAdapterMetrics.powerEnabled
+    updatedAdapter.adapterVoltage = fallbackAdapterMetrics.adapterVoltage
+    updatedAdapter.adapterCurrent = fallbackAdapterMetrics.adapterCurrent
+    updatedAdapter.adapterPower = fallbackAdapterMetrics.adapterPower
+    fallbackAdapterMetrics = updatedAdapter
+
+    if authoritativeDaemonSnapshot == nil {
+      applyFallbackSnapshot()
+    }
+  }
+
+  private func applyDaemonSnapshot(_ snapshot: DaemonSnapshot) {
+    let updatedBattery = BatteryMetrics(
+      batteryPercentage: snapshot.battery.displayedPercentage,
+      hardwareBatteryPercentage: snapshot.battery.hardwarePercentage,
+      isCharging: snapshot.battery.isCharging,
+      timeRemaining: snapshot.battery.timeRemaining,
+      batteryVoltage: snapshot.battery.voltage,
+      batteryCurrent: snapshot.battery.current,
+      batteryPower: snapshot.battery.power,
+      batteryTemperature: snapshot.battery.temperature,
+      batteryHealth: snapshot.battery.health,
+      cycleCount: snapshot.battery.cycleCount,
+      externalConnected: snapshot.adapter.physicallyConnected
+    )
+    let updatedAdapter = AdapterMetrics(
+      adapterConnected: snapshot.adapter.physicallyConnected,
+      powerEnabled: snapshot.adapter.powerEnabled,
+      adapterVoltage: snapshot.adapter.voltage,
+      adapterCurrent: snapshot.adapter.current,
+      adapterPower: snapshot.adapter.power
+    )
+
+    applyMetrics(updatedBattery, adapter: updatedAdapter)
+    applyCapabilities(snapshot.capabilities)
+  }
+
+  private func applyFallbackSnapshot() {
+    applyMetrics(fallbackMetrics, adapter: fallbackAdapterMetrics)
+  }
+
+  private func applyMetrics(_ updatedBattery: BatteryMetrics, adapter updatedAdapter: AdapterMetrics) {
     if updatedBattery != metrics {
       metrics = updatedBattery
     }
@@ -108,29 +202,73 @@ class BatteryService {
     updateControlState(from: updatedBattery, adapter: updatedAdapter)
   }
 
-  private func handleIOKitUpdate(_ newBatteryMetrics: BatteryMetrics, adapterUpdate: AdapterMetrics)
-  {
-    logger.debug("Received IOKit update")
+  private func applyCapabilities(_ capabilities: DaemonCapabilities) {
+    deviceCapabilities = DeviceCapabilities(
+      chargingControl: capabilities.chargingControl,
+      adapterControl: capabilities.adapterControl,
+      hasMagSafe: capabilities.magSafeLEDKeyAvailable,
+      magsafeLEDControl: capabilities.magSafeLEDControl
+    )
+  }
 
-    var updatedBattery = newBatteryMetrics
-    updatedBattery.batteryVoltage = metrics.batteryVoltage
-    updatedBattery.batteryCurrent = metrics.batteryCurrent
-    updatedBattery.batteryPower = metrics.batteryPower
+  private func synchronizeTelemetrySources() {
+    let useDaemonTelemetry = telemetryRequested && authoritativeDaemonSnapshot != nil
+    desiredDaemonTelemetry = useDaemonTelemetry
 
-    if updatedBattery != metrics {
-      metrics = updatedBattery
+    if useDaemonTelemetry {
+      stopFallbackFastPolling()
+    } else if telemetryRequested {
+      startFallbackFastPolling()
+    } else {
+      stopFallbackFastPolling()
     }
 
-    var updatedAdapter = adapterUpdate
-    updatedAdapter.adapterVoltage = adapterMetrics.adapterVoltage
-    updatedAdapter.adapterCurrent = adapterMetrics.adapterCurrent
-    updatedAdapter.adapterPower = adapterMetrics.adapterPower
+    startDaemonTelemetrySyncIfNeeded()
+  }
 
-    if updatedAdapter != adapterMetrics {
-      adapterMetrics = updatedAdapter
+  private func startFallbackFastPolling() {
+    guard !fallbackFastPollingActive else { return }
+    fallbackFastPollingActive = true
+    smcPoller.start()
+  }
+
+  private func stopFallbackFastPolling() {
+    guard fallbackFastPollingActive else { return }
+    fallbackFastPollingActive = false
+    smcPoller.stop()
+  }
+
+  private func startDaemonTelemetrySyncIfNeeded() {
+    guard daemonTelemetrySyncTask == nil, desiredDaemonTelemetry != appliedDaemonTelemetry else {
+      return
     }
 
-    updateControlState(from: updatedBattery, adapter: updatedAdapter)
+    daemonTelemetrySyncTask = Task { [weak self] in
+      guard let self else { return }
+
+      while self.desiredDaemonTelemetry != self.appliedDaemonTelemetry {
+        let target = self.desiredDaemonTelemetry
+        do {
+          try await self.daemonManager.setTelemetryActive(target)
+          self.appliedDaemonTelemetry = target
+        } catch {
+          if !target {
+            self.appliedDaemonTelemetry = false
+          }
+          self.logger.error(
+            "Could not set daemon telemetry to \(target): \(error.localizedDescription)"
+          )
+          break
+        }
+      }
+
+      self.daemonTelemetrySyncTask = nil
+      if self.desiredDaemonTelemetry != self.appliedDaemonTelemetry,
+        self.authoritativeDaemonSnapshot != nil
+      {
+        self.startDaemonTelemetrySyncIfNeeded()
+      }
+    }
   }
 
   private func updateControlState(from metrics: BatteryMetrics, adapter: AdapterMetrics) {
@@ -173,6 +311,11 @@ class BatteryService {
 
   func stop() {
     logger.info("BatteryService stopping")
+    isStopped = true
+    telemetryRequested = false
+    desiredDaemonTelemetry = false
+    daemonTelemetrySyncTask?.cancel()
+    daemonTelemetrySyncTask = nil
     ioKitMonitorTask?.cancel()
     ioKitMonitorTask = nil
     smcPoller.shutdown()

@@ -19,6 +19,7 @@ struct BatteryMetrics: Codable, Equatable {
 
 struct AdapterMetrics: Equatable {
     var adapterConnected: Bool = false
+    var powerEnabled: Bool? = nil
     var adapterVoltage: Double = 0
     var adapterCurrent: Double = 0
     var adapterPower: Double = 0

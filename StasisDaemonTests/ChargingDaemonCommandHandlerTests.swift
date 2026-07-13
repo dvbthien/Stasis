@@ -92,16 +92,23 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
         )
         let stateStore = DaemonStateStore(
             capabilities: capabilities,
-            hardware: hardware,
             daemonVersion: "test"
+        )
+        let clients = DaemonClientRegistry()
+        let runtime = DaemonRuntimeCoordinator(
+            settingsStore: settingsStore,
+            stateStore: stateStore,
+            hardware: hardware,
+            clients: clients
         )
         return ChargingDaemonCommandHandler(
             settingsStore: settingsStore,
             stateStore: stateStore,
+            runtime: runtime,
             hardware: hardware,
             capabilities: capabilities,
             daemonVersion: "test",
-            clients: DaemonClientRegistry()
+            clients: clients
         )
     }
 
@@ -157,6 +164,10 @@ private actor MockDaemonHardwareController: DaemonHardwareControlling {
             forceDischarging: false,
             magSafeLEDStateRawValue: 3
         )
+    }
+
+    func readTelemetry() async -> DaemonTelemetryReading {
+        DaemonTelemetryReading()
     }
 
     func resetToDefaults() async {}

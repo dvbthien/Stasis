@@ -44,25 +44,29 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
         }
 
         newConnection.setCodeSigningRequirement(clientValidator.codeSigningRequirement)
+        let clientID = UUID()
+        let scopedHandler = commandHandler.scoped(to: clientID)
         newConnection.exportedInterface = NSXPCInterface(with: ChargingDaemonProtocol.self)
-        newConnection.exportedObject = commandHandler
+        newConnection.exportedObject = scopedHandler
         newConnection.remoteObjectInterface = NSXPCInterface(
             with: ChargingDaemonClientProtocol.self
         )
 
-        let clientID = UUID()
-        let proxy = newConnection.remoteObjectProxyWithErrorHandler { [weak clients] _ in
+        let proxy = newConnection.remoteObjectProxyWithErrorHandler {
+            [weak clients, weak scopedHandler] _ in
             clients?.remove(id: clientID)
+            scopedHandler?.connectionInvalidated()
         }
         if let client = proxy as? ChargingDaemonClientProtocol {
             clients.add(client, id: clientID)
         }
 
-        newConnection.invalidationHandler = { [weak clients] in
+        newConnection.invalidationHandler = { [weak clients, weak scopedHandler] in
             clients?.remove(id: clientID)
+            scopedHandler?.connectionInvalidated()
         }
-        newConnection.interruptionHandler = { [weak clients] in
-            clients?.remove(id: clientID)
+        newConnection.interruptionHandler = { [weak scopedHandler] in
+            scopedHandler?.connectionInvalidated()
         }
         newConnection.resume()
         logger.info(
