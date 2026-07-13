@@ -69,6 +69,34 @@ private struct ChargingSettingsPreviewContainer: View {
   )
 }
 
+#Preview("Removing Background Service") {
+  ChargingSettingsPreviewContainer(
+    state: ChargingSettingsPreviewState(
+      title: "Removing Background Service",
+      helperStatus: .installed,
+      connectionStatus: .connected,
+      manageCharging: false,
+      isVerifying: false,
+      errorMessage: nil,
+      isUninstalling: true
+    )
+  )
+}
+
+#Preview("Remove Background Service Failed") {
+  ChargingSettingsPreviewContainer(
+    state: ChargingSettingsPreviewState(
+      title: "Remove Background Service Failed",
+      helperStatus: .installed,
+      connectionStatus: .connected,
+      manageCharging: false,
+      isVerifying: false,
+      errorMessage: nil,
+      uninstallErrorMessage: "The background service could not be removed."
+    )
+  )
+}
+
 #Preview("Checking Helper") {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(

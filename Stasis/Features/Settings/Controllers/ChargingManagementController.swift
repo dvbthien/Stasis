@@ -9,14 +9,16 @@ enum ManageChargingFlowState: Equatable {
   case waitingForApproval(String)
   case verifying
   case repairing
+  case uninstalling
+  case uninstallFailed(String)
   case ready
   case failed(String)
 
   var isLoading: Bool {
     switch self {
-    case .installing, .verifying, .repairing:
+    case .installing, .verifying, .repairing, .uninstalling:
       true
-    case .idle, .waitingForApproval, .ready, .failed:
+    case .idle, .waitingForApproval, .uninstallFailed, .ready, .failed:
       false
     }
   }
@@ -33,7 +35,16 @@ enum ManageChargingFlowState: Equatable {
       "Connecting to Charging daemon..."
     case .repairing:
       "Repairing Charging daemon..."
+    case .uninstalling:
+      "Removing Charging daemon..."
+    case .uninstallFailed:
+      nil
     }
+  }
+
+  var uninstallErrorMessage: String? {
+    guard case .uninstallFailed(let message) = self else { return nil }
+    return message
   }
 
   var showsApprovalPrompt: Bool {
@@ -54,6 +65,7 @@ final class ChargingManagementController {
   private let logger = Logger.stasis("ChargingManagementController")
 
   private var enableTask: Task<Void, Never>?
+  private var uninstallTask: Task<Void, Never>?
   private var spinnerTask: Task<Void, Never>?
   private var spinnerShownAt: ContinuousClock.Instant?
   private var pendingLoadingState: ManageChargingFlowState?
@@ -69,7 +81,7 @@ final class ChargingManagementController {
     hasAnyControl: Bool,
     setManageCharging: @escaping @MainActor (Bool) -> Void
   ) {
-    guard hasAnyControl else { return }
+    guard hasAnyControl, uninstallTask == nil else { return }
     enableRequested = true
     enableTask?.cancel()
     enableTask = Task { [weak self] in
@@ -81,7 +93,7 @@ final class ChargingManagementController {
     enableTask?.cancel()
     enableTask = nil
     cancelSpinner()
-    if flowState.isLoading {
+    if flowState.isLoading, uninstallTask == nil {
       flowState = .idle
     }
   }
@@ -90,6 +102,17 @@ final class ChargingManagementController {
     cancelPendingWork()
     enableRequested = false
     setManageCharging(false)
+  }
+
+  func requestUninstall(settingsModel: ChargingSettingsModel) {
+    guard uninstallTask == nil else { return }
+    cancelPendingWork()
+    enableRequested = false
+    flowState = .uninstalling
+    uninstallTask = Task { [weak self, weak settingsModel] in
+      guard let self, let settingsModel else { return }
+      await self.uninstallDaemon(settingsModel: settingsModel)
+    }
   }
 
   func checkApprovalStatus(
@@ -207,6 +230,18 @@ final class ChargingManagementController {
       guard enableRequested else { return }
       flowState = .failed(error.localizedDescription)
     }
+  }
+
+  private func uninstallDaemon(settingsModel: ChargingSettingsModel) async {
+    do {
+      try await settingsModel.disableManagementForDaemonUninstall()
+      try await helperManager.uninstall()
+      flowState = .idle
+    } catch {
+      logger.error("Failed to uninstall charging daemon: \(error)")
+      flowState = .uninstallFailed(error.localizedDescription)
+    }
+    uninstallTask = nil
   }
 
   private func verifyInstalledHelper() async throws {

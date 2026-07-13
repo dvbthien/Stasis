@@ -16,7 +16,7 @@ struct AdvancedSettingsView: View {
     Form {
       SettingsPageHeader(
         title: "Advanced",
-        message: "Fine-tune battery readings and maintenance behavior."
+        message: "Fine-tune battery readings and charging behavior."
       )
 
       Section {

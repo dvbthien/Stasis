@@ -14,8 +14,7 @@ actor BatteryManagementEngine {
     private let stateStore: DaemonStateStore
     private let hardware: any DaemonHardwareControlling
     private let sleepAssertion: any DaemonSleepAssertionControlling
-    private let maintainLoop: DaemonMaintainLoop
-    private weak var runtime: DaemonRuntimeCoordinator?
+    private let reconcileQueue: DaemonReconcileQueue
     private let retryDelay: Duration
 
     private var previousAdapterConnected: Bool?
@@ -36,9 +35,8 @@ actor BatteryManagementEngine {
         settingsStore: DaemonSettingsStore,
         stateStore: DaemonStateStore,
         hardware: any DaemonHardwareControlling,
-        runtime: DaemonRuntimeCoordinator,
         sleepAssertion: any DaemonSleepAssertionControlling = DaemonSleepAssertionController(),
-        maintainLoop: DaemonMaintainLoop = DaemonMaintainLoop(),
+        reconcileQueue: DaemonReconcileQueue = DaemonReconcileQueue(),
         retryDelay: Duration = .seconds(2)
     ) {
         mode = capabilities.chargeControlMode
@@ -46,56 +44,56 @@ actor BatteryManagementEngine {
         self.settingsStore = settingsStore
         self.stateStore = stateStore
         self.hardware = hardware
-        self.runtime = runtime
         self.sleepAssertion = sleepAssertion
-        self.maintainLoop = maintainLoop
+        self.reconcileQueue = reconcileQueue
         self.retryDelay = retryDelay
     }
 
     func start() async {
-        await maintainLoop.start { [weak self] reasons in
-            await self?.reconcile(reasons: reasons)
+        await reconcileQueue.start { [weak self] events in
+            await self?.reconcile(events: events) ?? .noPublication
         }
     }
 
-    func request(_ reason: DaemonMaintainReason) async {
-        await maintainLoop.request(reason)
+    func reconcilePolicy(on event: DaemonPolicyEvent) async -> DaemonPolicyReconcileResult {
+        await reconcileQueue.request(event)
     }
 
-    func setChargeLimitOverride(_ enabled: Bool) async throws {
+    func setChargeLimitOverride(_ enabled: Bool) async throws -> DaemonPolicyReconcileResult {
         try await stateStore.setChargeLimitOverride(enabled)
-        await request(.temporaryCommand)
+        return await reconcilePolicy(on: .temporaryCommand)
     }
 
-    func setForceDischarge(_ enabled: Bool) async throws {
+    func setForceDischarge(_ enabled: Bool) async throws -> DaemonPolicyReconcileResult {
         try await stateStore.setForceDischarge(enabled)
-        await request(.temporaryCommand)
+        return await reconcilePolicy(on: .temporaryCommand)
     }
 
-    func prepareForUninstall() async throws {
+    func prepareForUninstall() async throws -> DaemonPolicyReconcileResult {
         isPreparedForUninstall = true
         uninstallError = nil
-        await request(.uninstall)
+        let result = await reconcilePolicy(on: .uninstall)
         if let uninstallError {
             isPreparedForUninstall = false
             throw uninstallError
         }
+        return result
     }
 
-    func cancelUninstallPreparation() async {
-        guard isPreparedForUninstall else { return }
+    func cancelUninstallPreparation() async -> DaemonPolicyReconcileResult {
+        guard isPreparedForUninstall else { return .noPublication }
         isPreparedForUninstall = false
-        await request(.startup)
+        return await reconcilePolicy(on: .startup)
     }
 
     /// Stops scheduling work and restores every SMC state managed by the daemon
     /// before launchd terminates the process.
     func shutdown() async {
-        await request(.shutdown)
-        await maintainLoop.stop()
+        _ = await reconcilePolicy(on: .shutdown)
+        await reconcileQueue.stop()
     }
 
-    private func reconcile(reasons: Set<DaemonMaintainReason>) async {
+    private func reconcile(events: Set<DaemonPolicyEvent>) async -> DaemonPolicyReconcileResult {
         let settingsState = await settingsStore.state()
         let settings = settingsState.settings
         var context = await stateStore.managementContext()
@@ -107,11 +105,11 @@ actor BatteryManagementEngine {
         var powerPathChanged = false
 
         do {
-            if reasons.contains(.shutdown) {
+            if events.contains(.shutdown) {
                 powerPathChanged = try await restoreHardwareDefaults(
                     reason: "Daemon is shutting down"
                 )
-            } else if isPreparedForUninstall || reasons.contains(.uninstall) {
+            } else if isPreparedForUninstall || events.contains(.uninstall) {
                 powerPathChanged = try await restoreHardwareDefaults(
                     reason: "Daemon prepared for uninstall"
                 )
@@ -149,31 +147,30 @@ actor BatteryManagementEngine {
 
             await stateStore.updateHardwareState(try await hardware.readHardwareState())
             logger.debug(
-                "Maintain pass mode=\(self.mode.rawValue, privacy: .public) triggers=\(reasons.map(\.rawValue).sorted().joined(separator: ","), privacy: .public)"
+                "Policy reconcile mode=\(self.mode.rawValue, privacy: .public) events=\(events.map(\.rawValue).sorted().joined(separator: ","), privacy: .public)"
             )
         } catch {
-            if reasons.contains(.uninstall) {
+            if events.contains(.uninstall) {
                 uninstallError = DaemonErrorPayload(
                     code: .smcFailure,
                     message: error.localizedDescription
                 )
             }
             await stateStore.recordHardwareError(error)
-            logger.error("Maintain pass failed: \(error.localizedDescription, privacy: .public)")
-            if !reasons.contains(.shutdown) {
-                await maintainLoop.scheduleRetry(after: retryDelay)
+            logger.error("Policy reconcile failed: \(error.localizedDescription, privacy: .public)")
+            if !events.contains(.shutdown) {
+                await reconcileQueue.scheduleRetry(after: retryDelay)
             }
         }
 
-        if reasons.contains(.shutdown) {
-            return
+        if events.contains(.shutdown) {
+            return .noPublication
         }
 
         if powerPathChanged {
-            await runtime?.refreshTelemetryAfterPolicyApply()
-        } else {
-            await runtime?.publishCurrentSnapshot()
+            return .publishAfterPowerPathChange
         }
+        return .publishSnapshot
     }
 
     private func reconcileLegacy(

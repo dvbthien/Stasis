@@ -3,6 +3,7 @@ import SwiftUI
 struct ChargingSettingsView: View {
   @State private var helperManager = ChargingDaemonManager.shared
   @State private var chargingController = ChargingManagementController()
+  @State private var showsUninstallConfirmation = false
   @Bindable var settingsModel: ChargingSettingsModel
 
   private let fallbackCapabilities: DeviceCapabilities
@@ -90,8 +91,17 @@ struct ChargingSettingsView: View {
   }
 
   private var isCheckingChargingDaemon: Bool {
-    previewState?.isVerifying
+    previewState.map { $0.isVerifying || $0.isUninstalling }
       ?? (chargingController.flowState.isLoading || settingsModel.isSaving)
+  }
+
+  private var isUninstalling: Bool {
+    previewState?.isUninstalling ?? (chargingController.flowState == .uninstalling)
+  }
+
+  private var uninstallErrorMessage: String? {
+    previewState?.uninstallErrorMessage
+      ?? chargingController.flowState.uninstallErrorMessage
   }
 
   private var displayedChargingControlError: String? {
@@ -294,15 +304,35 @@ struct ChargingSettingsView: View {
           )
         }
       }
+
+      if helperStatus != .notInstalled || uninstallErrorMessage != nil {
+        ChargingDaemonLifecycleSection(
+          helperStatus: helperStatus,
+          isUninstalling: isUninstalling,
+          isBusy: isCheckingChargingDaemon,
+          errorMessage: uninstallErrorMessage,
+          requestUninstall: runPreviewSafe(showUninstallConfirmation)
+        )
+      }
     }
     .settingsFormLayout()
-    .disabled(previewState == nil && settingsModel.isSaving)
+    .disabled(previewState == nil && (settingsModel.isSaving || isUninstalling))
     .animation(.default, value: isManageChargingOn)
     .animation(.default, value: settingsModel.settings.sailingModeEnabled)
     .animation(.default, value: settingsModel.settings.heatProtectionEnabled)
     .animation(.default, value: settingsModel.settings.manageMagSafeLED)
     .animation(.default, value: helperStatus)
     .animation(.default, value: connectionStatus)
+    .alert("Remove Background Service?", isPresented: $showsUninstallConfirmation) {
+      Button("Cancel", role: .cancel) {}
+      Button("Remove", role: .destructive) {
+        requestUninstall()
+      }
+    } message: {
+      Text(
+        "Charging management will stop, and your Mac’s charging controls will return to their default state. You can enable it again at any time."
+      )
+    }
     .onAppear {
       guard previewState == nil else { return }
       chargingController.reconcileOnAppear(
@@ -366,5 +396,13 @@ struct ChargingSettingsView: View {
   private func reconnectChargingDaemon() {
     helperManager.disconnect()
     requestEnableChargingManagement()
+  }
+
+  private func showUninstallConfirmation() {
+    showsUninstallConfirmation = true
+  }
+
+  private func requestUninstall() {
+    chargingController.requestUninstall(settingsModel: settingsModel)
   }
 }

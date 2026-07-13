@@ -54,8 +54,7 @@ let managementEngine = BatteryManagementEngine(
     capabilities: capabilities,
     settingsStore: settingsStore,
     stateStore: stateStore,
-    hardware: hardware,
-    runtime: runtime
+    hardware: hardware
 )
 let commandHandler = ChargingDaemonCommandHandler(
     settingsStore: settingsStore,

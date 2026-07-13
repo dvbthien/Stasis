@@ -151,7 +151,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
 
             let settingsPayload = try DaemonPayloadCodec.encode(settingsState)
             clients.publishSettings(settingsPayload)
-            await runtime.settingsDidChange()
+            await runtime.reconcilePolicyAfterSettingsChange()
             return settingsState
         }
     }

@@ -189,7 +189,7 @@ final class BatteryManagementEngineTests: XCTestCase {
         var changedSettings = settings(automaticDischarge: true)
         changedSettings.chargeLimit = 60
         _ = try await fixture.settingsStore.setSettings(changedSettings)
-        await fixture.runtime.settingsDidChange()
+        await fixture.runtime.reconcilePolicyAfterSettingsChange()
 
         let operations = await fixture.hardware.operations()
         XCTAssertTrue(operations.contains(.charging(false)))
@@ -209,7 +209,7 @@ final class BatteryManagementEngineTests: XCTestCase {
             return update
         }
 
-        await fixture.runtime.settingsDidChange()
+        await fixture.runtime.reconcilePolicyAfterSettingsChange()
 
         let chargingEnabled = await fixture.hardware.isChargingEnabled()
         let adapterEnabled = await fixture.hardware.isAdapterEnabled()
@@ -273,7 +273,7 @@ final class BatteryManagementEngineTests: XCTestCase {
         var automaticDischargeSettings = initialSettings
         automaticDischargeSettings.automaticDischarge = true
         _ = try await fixture.settingsStore.setSettings(automaticDischargeSettings)
-        await fixture.runtime.settingsDidChange()
+        await fixture.runtime.reconcilePolicyAfterSettingsChange()
 
         let immediateSnapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
         let immediateTelemetryReadCount = await fixture.hardware.telemetryReadCount()
@@ -416,17 +416,18 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertEqual(snapshot.policy.reason, "Battery is above the charge limit of 80%")
     }
 
-    func testMaintainLoopSerializesConcurrentTriggers() async throws {
-        let loop = DaemonMaintainLoop()
-        let probe = MaintainOperationProbe()
-        await loop.start { _ in
+    func testReconcileQueueSerializesConcurrentEvents() async throws {
+        let queue = DaemonReconcileQueue()
+        let probe = ReconcileOperationProbe()
+        await queue.start { _ in
             await probe.run()
+            return .publishSnapshot
         }
 
         await withTaskGroup(of: Void.self) { group in
             for index in 0..<20 {
                 group.addTask {
-                    await loop.request(index.isMultiple(of: 2) ? .powerSource : .settings)
+                    _ = await queue.request(index.isMultiple(of: 2) ? .powerSource : .settings)
                 }
             }
         }
@@ -435,23 +436,24 @@ final class BatteryManagementEngineTests: XCTestCase {
         let passCount = await probe.passCount()
         XCTAssertEqual(maximumConcurrentPasses, 1)
         XCTAssertLessThanOrEqual(passCount, 2)
-        await loop.stop()
+        await queue.stop()
     }
 
-    func testMaintainRequestWaitsUntilItsReconciliationCompletes() async throws {
-        let loop = DaemonMaintainLoop()
-        let gate = MaintainOperationGate()
+    func testReconcileEventWaitsUntilPolicyReconciliationCompletes() async throws {
+        let queue = DaemonReconcileQueue()
+        let gate = ReconcileOperationGate()
         let secondRequest = RequestCompletionFlag()
-        await loop.start { _ in
+        await queue.start { _ in
             await gate.run()
+            return .publishSnapshot
         }
 
         let firstTask = Task {
-            await loop.request(.powerSource)
+            _ = await queue.request(.powerSource)
         }
         await gate.waitUntilFirstPassStarts()
         let secondTask = Task {
-            await loop.request(.settings)
+            _ = await queue.request(.settings)
             await secondRequest.markCompleted()
         }
 
@@ -464,7 +466,7 @@ final class BatteryManagementEngineTests: XCTestCase {
         await secondTask.value
         let completedAfterReconciliation = await secondRequest.isCompleted()
         XCTAssertTrue(completedAfterReconciliation)
-        await loop.stop()
+        await queue.stop()
     }
 
     private func makeFixture(
@@ -512,7 +514,6 @@ final class BatteryManagementEngineTests: XCTestCase {
             settingsStore: settingsStore,
             stateStore: stateStore,
             hardware: hardware,
-            runtime: runtime,
             sleepAssertion: sleepAssertion
         )
         await runtime.installManagementEngine(engine)
@@ -711,7 +712,7 @@ private actor MockSleepAssertion: DaemonSleepAssertionControlling {
     }
 }
 
-private actor MaintainOperationProbe {
+private actor ReconcileOperationProbe {
     private var activePasses = 0
     private var maximumActivePasses = 0
     private var completedPasses = 0
@@ -733,7 +734,7 @@ private actor MaintainOperationProbe {
     }
 }
 
-private actor MaintainOperationGate {
+private actor ReconcileOperationGate {
     private var passCount = 0
     private var firstPassStartedWaiters: [CheckedContinuation<Void, Never>] = []
     private var firstPassRelease: CheckedContinuation<Void, Never>?

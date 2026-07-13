@@ -57,14 +57,14 @@ actor DaemonRuntimeCoordinator {
             scheduleDelayedTelemetryRefresh()
         }
 
-        let maintainReason: DaemonMaintainReason =
+        let policyEvent: DaemonPolicyEvent =
             switch update.reason {
             case .initial: .startup
             case .interestNotification: .powerSource
             case .wake: .wake
             case .settingsRefresh, .hardwareRefresh: .powerSource
             }
-        await managementEngine?.request(maintainReason)
+        await reconcilePolicy(on: policyEvent)
     }
 
     func currentSnapshot(refreshHardware: Bool = true) async -> DaemonSnapshot {
@@ -81,17 +81,16 @@ actor DaemonRuntimeCoordinator {
         clients.publishSnapshot(payload)
     }
 
-    func refreshAfterHardwareChange() async {
+    func reconcilePolicyAfterHardwareCommand() async {
         _ = await refreshIOKitSnapshot(reason: .hardwareRefresh)
         await refreshTelemetryAndPublish(refreshHardware: true)
         scheduleDelayedTelemetryRefresh()
-        await managementEngine?.request(.hardwareCommand)
+        await reconcilePolicy(on: .hardwareCommand)
     }
 
-    /// Refreshes measurements after the engine has already reconciled and
-    /// read hardware state. This deliberately does not enqueue another
-    /// maintain pass, which would feed the engine back into itself.
-    func refreshTelemetryAfterPolicyApply() async {
+    /// Refreshes measurements after policy reconciliation has already applied
+    /// hardware state. This deliberately does not enqueue another policy event.
+    private func refreshTelemetryAfterPolicyReconcile() async {
         _ = await refreshIOKitSnapshot(reason: .hardwareRefresh)
         await refreshTelemetryAndPublish()
         scheduleDelayedTelemetryRefresh()
@@ -104,13 +103,9 @@ actor DaemonRuntimeCoordinator {
         await publishCurrentSnapshot(refreshHardware: refreshHardware)
     }
 
-    func settingsDidChange() async {
+    func reconcilePolicyAfterSettingsChange() async {
         _ = await refreshIOKitSnapshot(reason: .settingsRefresh)
-        if let managementEngine {
-            await managementEngine.request(.settings)
-        } else {
-            await publishCurrentSnapshot()
-        }
+        await reconcilePolicy(on: .settings)
     }
 
     func setChargeLimitOverride(_ enabled: Bool) async throws -> DaemonSnapshot {
@@ -120,7 +115,8 @@ actor DaemonRuntimeCoordinator {
                 message: "Battery management engine is unavailable"
             )
         }
-        try await managementEngine.setChargeLimitOverride(enabled)
+        let result = try await managementEngine.setChargeLimitOverride(enabled)
+        await publishPolicyReconcileResult(result)
         return await currentSnapshot(refreshHardware: false)
     }
 
@@ -131,7 +127,8 @@ actor DaemonRuntimeCoordinator {
                 message: "Battery management engine is unavailable"
             )
         }
-        try await managementEngine.setForceDischarge(enabled)
+        let result = try await managementEngine.setForceDischarge(enabled)
+        await publishPolicyReconcileResult(result)
         return await currentSnapshot(refreshHardware: false)
     }
 
@@ -164,11 +161,14 @@ actor DaemonRuntimeCoordinator {
                 message: "Battery management engine is unavailable"
             )
         }
-        try await managementEngine.prepareForUninstall()
+        let result = try await managementEngine.prepareForUninstall()
+        await publishPolicyReconcileResult(result)
     }
 
     func cancelUninstallPreparation() async {
-        await managementEngine?.cancelUninstallPreparation()
+        guard let managementEngine else { return }
+        let result = await managementEngine.cancelUninstallPreparation()
+        await publishPolicyReconcileResult(result)
     }
 
     func shutdown() async {
@@ -205,7 +205,22 @@ actor DaemonRuntimeCoordinator {
         let powerSourceChanged = await refreshIOKitSnapshot(reason: .hardwareRefresh)
         await refreshTelemetryAndPublish()
         if powerSourceChanged {
-            await managementEngine?.request(.powerSource)
+            await reconcilePolicy(on: .powerSource)
+        }
+    }
+
+    private func reconcilePolicy(on event: DaemonPolicyEvent) async {
+        guard let managementEngine else { return }
+        let result = await managementEngine.reconcilePolicy(on: event)
+        await publishPolicyReconcileResult(result)
+    }
+
+    private func publishPolicyReconcileResult(_ result: DaemonPolicyReconcileResult) async {
+        guard result.shouldPublishSnapshot else { return }
+        if result.powerPathChanged {
+            await refreshTelemetryAfterPolicyReconcile()
+        } else {
+            await publishCurrentSnapshot()
         }
     }
 

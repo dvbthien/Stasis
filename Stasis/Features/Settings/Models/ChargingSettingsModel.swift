@@ -1,6 +1,17 @@
 import Foundation
 import Observation
 
+enum ChargingSettingsOperationError: LocalizedError {
+  case saveInProgress
+
+  var errorDescription: String? {
+    switch self {
+    case .saveInProgress:
+      "Wait for the current charging settings change to finish before removing the background service."
+    }
+  }
+}
+
 @MainActor
 protocol ChargingSettingsManaging: AnyObject {
   var daemonSettingsState: DaemonSettingsState? { get }
@@ -121,6 +132,41 @@ final class ChargingSettingsModel {
 
   func clearError() {
     errorMessage = nil
+  }
+
+  /// Persists management as disabled before the daemon is removed so a later
+  /// reinstall cannot unexpectedly resume the previous charging policy.
+  func disableManagementForDaemonUninstall() async throws {
+    guard saveTask == nil, !isSaving else {
+      throw ChargingSettingsOperationError.saveInProgress
+    }
+
+    let hasPendingDebouncedSave = debounceTask != nil
+    debounceTask?.cancel()
+    debounceTask = nil
+    pendingSave = nil
+
+    guard settings.managementEnabled || hasPendingDebouncedSave else {
+      errorMessage = nil
+      return
+    }
+
+    var updated = settings
+    updated.managementEnabled = false
+    isSaving = true
+    defer { isSaving = false }
+
+    do {
+      let state = try await client.synchronizeChargingSettings(updated)
+      confirmedSettings = state.settings
+      settings = state.settings
+      isLoaded = true
+      errorMessage = nil
+    } catch {
+      settings = confirmedSettings
+      errorMessage = error.localizedDescription
+      throw error
+    }
   }
 
   func stop() {

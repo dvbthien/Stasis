@@ -100,6 +100,38 @@ final class ChargingSettingsModelTests: XCTestCase {
         model.stop()
     }
 
+    func testDaemonUninstallPreparationPersistsManagementDisabled() async throws {
+        let client = MockChargingSettingsManager(
+            settings: DaemonSettings(managementEnabled: true, chargeLimit: 75)
+        )
+        let model = ChargingSettingsModel(client: client)
+
+        try await model.disableManagementForDaemonUninstall()
+
+        XCTAssertFalse(model.settings.managementEnabled)
+        XCTAssertFalse(client.daemonSettingsState?.settings.managementEnabled ?? true)
+        XCTAssertEqual(client.savedSettings.count, 1)
+        XCTAssertEqual(client.savedSettings.first?.chargeLimit, 75)
+        model.stop()
+    }
+
+    func testDaemonUninstallPreparationRollsBackWhenSaveFails() async {
+        let confirmed = DaemonSettings(managementEnabled: true, chargeLimit: 80)
+        let client = MockChargingSettingsManager(settings: confirmed)
+        client.saveError = MockChargingSettingsError.rejected
+        let model = ChargingSettingsModel(client: client)
+
+        do {
+            try await model.disableManagementForDaemonUninstall()
+            XCTFail("Expected uninstall preparation to fail")
+        } catch {
+            XCTAssertEqual(model.settings, confirmed)
+            XCTAssertNotNil(model.errorMessage)
+        }
+
+        model.stop()
+    }
+
     func testCapabilityAvailabilityDisablesLegacyOnlyFirmwareFeatures() {
         let unresolved = ChargingSettingsAvailability(capabilities: nil)
         XCTAssertFalse(unresolved.isResolved)

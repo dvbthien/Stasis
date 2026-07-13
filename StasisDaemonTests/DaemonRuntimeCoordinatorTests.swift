@@ -156,7 +156,7 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
         let client = SnapshotCaptureClient()
         fixture.clients.add(client, id: UUID())
 
-        await fixture.runtime.refreshAfterHardwareChange()
+        await fixture.runtime.reconcilePolicyAfterHardwareCommand()
         let immediateReads = await fixture.hardware.telemetryReadCount()
         XCTAssertEqual(immediateReads, 1)
         XCTAssertEqual(client.snapshotCount(), 1)
@@ -235,7 +235,7 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
             await source.refresh(reason: reason)
         }
 
-        await fixture.runtime.settingsDidChange()
+        await fixture.runtime.reconcilePolicyAfterSettingsChange()
 
         let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
         let reasons = await source.requestedReasons()
@@ -264,7 +264,7 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
             await source.refresh(reason: reason)
         }
 
-        await fixture.runtime.refreshAfterHardwareChange()
+        await fixture.runtime.reconcilePolicyAfterHardwareCommand()
         let immediateSnapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
         XCTAssertEqual(immediateSnapshot.battery.displayedPercentage, 60)
 

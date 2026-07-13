@@ -148,8 +148,7 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             capabilities: capabilities,
             settingsStore: settingsStore,
             stateStore: stateStore,
-            hardware: hardware,
-            runtime: runtime
+            hardware: hardware
         )
         await runtime.installManagementEngine(engine)
         let handler = ChargingDaemonCommandHandler(
