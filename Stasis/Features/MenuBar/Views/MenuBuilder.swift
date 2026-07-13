@@ -58,7 +58,9 @@ class MenuBuilder {
             }
         }
 
-        if Defaults[.manageCharging] && batteryService.adapterMetrics.adapterConnected {
+        if ChargingDaemonManager.shared.daemonSettingsState?.settings.managementEnabled == true
+            && batteryService.adapterMetrics.adapterConnected
+        {
             menu.addItem(NSMenuItem.separator())
             menu.addItem(
                 createMenuItem(view: ChargeLimitOverrideToggleView(chargingCoordinator: chargingCoordinator)))

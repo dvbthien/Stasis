@@ -2,17 +2,17 @@ import SwiftUI
 
 struct ChargingDischargeSection: View {
   @Binding var automaticDischarge: Bool
-  let hasAdapterControl: Bool
+  let isSupported: Bool
 
   var body: some View {
     Section {
       Toggle("Automatic discharge", isOn: $automaticDischarge)
-        .disabled(!hasAdapterControl)
+        .disabled(!isSupported)
 
-      if !hasAdapterControl {
+      if !isSupported {
         SettingsInlineMessage(
-          title: Text("Adapter control is not supported on this device."),
-          message: Text("Automatic discharge requires adapter control support from this Mac.")
+          title: Text("Automatic discharge is unavailable in this charge-control mode."),
+          message: Text("The daemon only enables this feature when direct charging and adapter control are both supported.")
         )
       }
     } header: {

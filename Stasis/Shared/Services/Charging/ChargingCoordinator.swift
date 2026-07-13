@@ -1,4 +1,3 @@
-import Defaults
 import Foundation
 import Observation
 import os.log
@@ -13,7 +12,6 @@ final class ChargingCoordinator {
   private let daemonManager = ChargingDaemonManager.shared
 
   private var metricsObservation: Task<Void, Never>?
-  private var settingsObservation: Task<Void, Never>?
 
   private var lastAdapterConnected: Bool?
   private var lastManagementEnabled: Bool?
@@ -28,7 +26,6 @@ final class ChargingCoordinator {
   init(batteryService: BatteryService) {
     self.batteryService = batteryService
     startObservingMetrics()
-    startObservingSettings()
     observeDaemonSnapshot()
   }
 
@@ -48,39 +45,11 @@ final class ChargingCoordinator {
     }
   }
 
-  private func startObservingSettings() {
-    settingsObservation = Task { [weak self] in
-      for await _ in Defaults.updates(
-        [
-          .manageCharging, .sailingMode, .automaticDischarge,
-          .disableSleepUntilChargeLimit, .enableHeatProtectionMode,
-          .manageMagSafeLED, .useHardwarePercentage, .chargeLimit,
-          .sailingModeLimit, .heatProtectionLimit,
-          .heatProtectionMagSafeLEDState,
-        ],
-        initial: false
-      ) {
-        guard let self else { return }
-        let settings = DaemonSettings.currentAppDefaults
-        self.evaluateShadow(controlState: self.batteryService.controlState)
-        Task { @MainActor [weak self] in
-          guard let self else { return }
-          do {
-            try await self.daemonManager.synchronizeChargingSettings(settings)
-          } catch {
-            self.logger.error(
-              "Could not synchronize shadow settings: \(error.localizedDescription)"
-            )
-          }
-        }
-      }
-    }
-  }
-
   private func observeDaemonSnapshot() {
     guard !isStopped else { return }
     withObservationTracking {
       _ = daemonManager.daemonSnapshot
+      _ = daemonManager.daemonSettingsState
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self, !self.isStopped else { return }
@@ -99,7 +68,7 @@ final class ChargingCoordinator {
   }
 
   private func evaluateShadow(controlState: BatteryControlState) {
-    let settings = DaemonSettings.currentAppDefaults
+    guard let settings = daemonManager.daemonSettingsState?.settings else { return }
     let adapterChanged = lastAdapterConnected != controlState.adapterConnected
     let managementChanged = lastManagementEnabled != settings.managementEnabled
     lastAdapterConnected = controlState.adapterConnected
@@ -178,7 +147,5 @@ final class ChargingCoordinator {
     isStopped = true
     metricsObservation?.cancel()
     metricsObservation = nil
-    settingsObservation?.cancel()
-    settingsObservation = nil
   }
 }

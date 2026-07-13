@@ -18,7 +18,6 @@ class StatusBarManager {
 
     private var locationObservation: Defaults.Observation?
     private var showStateObservation: Defaults.Observation?
-    private var useHardwarePercentageObservation: Defaults.Observation?
     private var lastRenderedState: StatusIconState?
 
     init(batteryService: BatteryService, lowPowerModeMonitor: LowPowerModeMonitor) {
@@ -46,6 +45,7 @@ class StatusBarManager {
             _ = batteryService.metrics
             _ = batteryService.adapterMetrics
             _ = lowPowerModeMonitor.isEnabled
+            _ = ChargingDaemonManager.shared.daemonSettingsState
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -60,9 +60,6 @@ class StatusBarManager {
             self?.updateStatusIconIfNeeded()
         }
         showStateObservation = Defaults.observe(.showBatteryStateInStatusIcon) { [weak self] _ in
-            self?.updateStatusIconIfNeeded()
-        }
-        useHardwarePercentageObservation = Defaults.observe(.useHardwarePercentage) { [weak self] _ in
             self?.updateStatusIconIfNeeded()
         }
     }
@@ -80,7 +77,9 @@ class StatusBarManager {
             metrics: batteryService.metrics,
             adapter: batteryService.adapterMetrics,
             isLowPower: lowPowerModeMonitor.isEnabled,
-            useHardwarePercentage: Defaults[.useHardwarePercentage],
+            useHardwarePercentage:
+                ChargingDaemonManager.shared.daemonSettingsState?.settings.useHardwarePercentage
+                ?? Defaults[.useHardwarePercentage],
             displayLocation: Defaults[.batteryPercentageDisplayLocation],
             showState: Defaults[.showBatteryStateInStatusIcon]
         )

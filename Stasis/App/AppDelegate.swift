@@ -15,6 +15,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var menu: NSMenu!
     private var settingsObservation: Task<Void, Never>?
     private var adapterObservation: Task<Void, Never>?
+    private var chargingNotificationObservation: Task<Void, Never>?
+    private let chargingStateNotifier = ChargingStateNotifier()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Exit the app immediately if the device doesn't have a battery
@@ -53,6 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             batteryService: batteryService,
             lowPowerModeMonitor: lowPowerModeMonitor
         )
+        observeDaemonChargingNotifications()
     }
 
     private func setupMenu() {
@@ -69,7 +72,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     .showPowerSource, .showTimeTillDischarge, .showBatteryCycleCount,
                     .showBatteryHealth, .showBatteryTemperature, .showUptime,
                     .showBatteryMode, .showInternalPower, .showExternalPower,
-                    .showPowerDistribution, .manageCharging,
+                    .showPowerDistribution,
                 ],
                 initial: false
             ) {
@@ -89,6 +92,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         // readings, so this doesn't rebuild the whole menu on
                         // every fast-poll tick.
                         _ = self.batteryService.controlState.adapterConnected
+                        _ = ChargingDaemonManager.shared.daemonSettingsState
                     } onChange: {
                         Task { @MainActor in
                             continuation.resume()
@@ -109,12 +113,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ) { _, _ in }
     }
 
+    private func observeDaemonChargingNotifications() {
+        chargingNotificationObservation = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                await withCheckedContinuation { continuation in
+                    withObservationTracking {
+                        if let snapshot = ChargingDaemonManager.shared.daemonSnapshot {
+                            self.chargingStateNotifier.process(snapshot: snapshot)
+                        }
+                    } onChange: {
+                        Task { @MainActor in continuation.resume() }
+                    }
+                }
+            }
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         settingsWindowController.cancelPendingRestart()
         settingsObservation?.cancel()
         settingsObservation = nil
         adapterObservation?.cancel()
         adapterObservation = nil
+        chargingNotificationObservation?.cancel()
+        chargingNotificationObservation = nil
 
         chargingCoordinator?.stop()
         batteryService?.stop()

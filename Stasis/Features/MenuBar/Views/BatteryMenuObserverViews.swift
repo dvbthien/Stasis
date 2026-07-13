@@ -5,7 +5,12 @@ import SwiftUI
 /// `useHardwarePercentage` setting directly, rather than a ViewModel.
 struct BatteryMainInfoView: View {
     let batteryService: BatteryService
-    @Default(.useHardwarePercentage) private var useHardwarePercentage
+    @State private var daemonManager = ChargingDaemonManager.shared
+
+    private var useHardwarePercentage: Bool {
+        daemonManager.daemonSettingsState?.settings.useHardwarePercentage
+            ?? Defaults[.useHardwarePercentage]
+    }
 
     var body: some View {
         let info = BatteryDisplayInfo(
@@ -21,7 +26,12 @@ struct BatteryAdditionalInfoObserverView: View {
     let label: String
     let batteryService: BatteryService
     let keyPath: KeyPath<BatteryDisplayInfo, String>
-    @Default(.useHardwarePercentage) private var useHardwarePercentage
+    @State private var daemonManager = ChargingDaemonManager.shared
+
+    private var useHardwarePercentage: Bool {
+        daemonManager.daemonSettingsState?.settings.useHardwarePercentage
+            ?? Defaults[.useHardwarePercentage]
+    }
 
     var body: some View {
         let info = BatteryDisplayInfo(
@@ -43,7 +53,12 @@ struct UptimeInfoView: View {
 
 struct PowerSankeyViewWrapper: View {
     let batteryService: BatteryService
-    @Default(.useHardwarePercentage) private var useHardwarePercentage
+    @State private var daemonManager = ChargingDaemonManager.shared
+
+    private var useHardwarePercentage: Bool {
+        daemonManager.daemonSettingsState?.settings.useHardwarePercentage
+            ?? Defaults[.useHardwarePercentage]
+    }
 
     var body: some View {
         let info = BatteryDisplayInfo(

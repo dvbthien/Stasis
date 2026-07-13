@@ -71,7 +71,6 @@ final class ChargingManagementController {
   ) {
     guard hasAnyControl else { return }
     enableRequested = true
-    setManageCharging(false)
     enableTask?.cancel()
     enableTask = Task { [weak self] in
       await self?.enableChargingManagement(setManageCharging: setManageCharging)
@@ -90,7 +89,6 @@ final class ChargingManagementController {
   func disable(setManageCharging: @escaping @MainActor (Bool) -> Void) {
     cancelPendingWork()
     enableRequested = false
-    helperManager.disconnect()
     setManageCharging(false)
   }
 
@@ -108,8 +106,7 @@ final class ChargingManagementController {
 
   func reconcileOnAppear(
     hasAnyControl: Bool,
-    manageCharging: Bool,
-    setManageCharging: @escaping @MainActor (Bool) -> Void
+    manageCharging: Bool
   ) {
     guard manageCharging else { return }
     guard
@@ -117,18 +114,15 @@ final class ChargingManagementController {
       helperManager.helperStatus == .installed,
       helperManager.connectionStatus == .connected
     else {
-      setManageCharging(false)
-      flowState = .idle
+      flowState = .failed("Charging daemon is unavailable; existing management state was preserved.")
       return
     }
   }
 
   func handleHelperStatusChange(
-    _ newStatus: ChargingHelperStatus,
-    setManageCharging: @escaping @MainActor (Bool) -> Void
+    _ newStatus: ChargingHelperStatus
   ) {
     guard newStatus != .installed else { return }
-    setManageCharging(false)
 
     if enableRequested {
       switch newStatus {
@@ -146,11 +140,9 @@ final class ChargingManagementController {
 
   func handleConnectionStatusChange(
     _ newStatus: ChargingDaemonConnectionStatus,
-    manageCharging: Bool,
-    setManageCharging: @escaping @MainActor (Bool) -> Void
+    manageCharging: Bool
   ) {
     guard manageCharging, newStatus != .connected else { return }
-    setManageCharging(false)
     flowState = .failed(connectionStatusMessage(for: newStatus) ?? "Charging daemon disconnected.")
   }
 
@@ -195,14 +187,12 @@ final class ChargingManagementController {
       case .requiresApproval:
         await finishSpinnerIfNeeded()
         guard enableRequested else { return }
-        setManageCharging(false)
         flowState = .waitingForApproval(
           "Approve Stasis in System Settings to enable charge management."
         )
       case .notInstalled:
         await finishSpinnerIfNeeded()
         guard enableRequested else { return }
-        setManageCharging(false)
         flowState = .failed("Charging daemon is not installed.")
       }
     } catch is CancellationError {
@@ -211,7 +201,6 @@ final class ChargingManagementController {
       await finishSpinnerIfNeeded()
       logger.error("Failed to enable charging management: \(error)")
       guard enableRequested else { return }
-      setManageCharging(false)
       flowState = .failed(error.localizedDescription)
     }
   }

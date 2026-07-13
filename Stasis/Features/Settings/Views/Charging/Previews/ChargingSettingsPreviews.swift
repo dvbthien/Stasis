@@ -199,6 +199,14 @@ private struct ChargingSettingsPreviewContainer: View {
       adapterControl: false,
       hasMagSafe: false,
       magsafeLEDControl: false
+    ),
+    previewState: ChargingSettingsPreviewState(
+      title: "Unsupported",
+      helperStatus: .installed,
+      connectionStatus: .connected,
+      manageCharging: false,
+      isVerifying: false,
+      errorMessage: nil
     )
   )
   .frame(width: 520, height: 420)

@@ -41,6 +41,22 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
         XCTAssertEqual(after, before)
     }
 
+    func testPersistenceFailureDoesNotRunHardwarePolicy() async throws {
+        let persistence = InMemoryDaemonSettingsPersistence()
+        let fixture = try await makeHandler(persistence: persistence)
+        let payload = try DaemonPayloadCodec.encode(settings(chargeLimit: 70))
+        persistence.shouldFailSaves = true
+
+        let response = await requestRaw { reply in
+            fixture.handler.setSettings(authData: nil, payload: payload, reply: reply)
+        }
+        let hardwareWriteCount = await fixture.hardware.writeCount()
+
+        XCTAssertNil(response.data)
+        XCTAssertNotNil(response.errorMessage)
+        XCTAssertEqual(hardwareWriteCount, 0)
+    }
+
     func testTemporaryCommandsReturnUpdatedSnapshotsWithoutPersistence() async throws {
         let persistence = InMemoryDaemonSettingsPersistence()
         let fixture = try await makeHandler(persistence: persistence)

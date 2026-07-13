@@ -2,8 +2,15 @@ import Defaults
 import SwiftUI
 
 struct AdvancedSettingsView: View {
-  @Default(.useHardwarePercentage) private var useHardwarePercentage
   @Default(.restartOnClose) private var restartOnClose
+  @Bindable var chargingSettingsModel: ChargingSettingsModel
+
+  private var useHardwarePercentage: Binding<Bool> {
+    Binding(
+      get: { chargingSettingsModel.settings.useHardwarePercentage },
+      set: { chargingSettingsModel.set(\.useHardwarePercentage, to: $0) }
+    )
+  }
 
   var body: some View {
     Form {
@@ -13,14 +20,21 @@ struct AdvancedSettingsView: View {
       )
 
       Section {
-        Toggle("Use hardware percentage", isOn: $useHardwarePercentage)
+        Toggle("Use hardware percentage", isOn: useHardwarePercentage)
 
-        if useHardwarePercentage {
+        if chargingSettingsModel.settings.useHardwarePercentage {
           SettingsInlineMessage(
             title: Text(
               "Hardware percentage can differ from the calibrated value macOS shows in the battery menu."
             ),
             message: Text("Use this only if you prefer raw battery readings.")
+          )
+        }
+
+        if let errorMessage = chargingSettingsModel.errorMessage {
+          SettingsInlineMessage(
+            title: Text("Couldn’t save battery reading settings."),
+            message: Text(errorMessage)
           )
         }
       } header: {
@@ -40,9 +54,12 @@ struct AdvancedSettingsView: View {
       }
     }
     .settingsFormLayout()
+    .disabled(chargingSettingsModel.isSaving)
   }
 }
 
 #Preview {
-  AdvancedSettingsView()
+  AdvancedSettingsView(
+    chargingSettingsModel: .preview(managementEnabled: true)
+  )
 }

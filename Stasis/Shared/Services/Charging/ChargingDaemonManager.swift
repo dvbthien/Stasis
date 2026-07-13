@@ -112,7 +112,7 @@ class ChargingDaemonManager {
     }
   }
 
-  func synchronizeChargingSettings(_ settings: DaemonSettings) async throws {
+  func synchronizeChargingSettings(_ settings: DaemonSettings) async throws -> DaemonSettingsState {
     let payload = try DaemonPayloadCodec.encode(settings)
     try await executeCommand("Synchronize daemon charging settings") { [weak self] helper, reply in
       helper.setSettings(authData: nil, payload: payload) { response, errorMessage in
@@ -133,6 +133,10 @@ class ChargingDaemonManager {
         }
       }
     }
+    guard let daemonSettingsState else {
+      throw XPCError.commandFailed("Daemon did not return canonical charging settings")
+    }
+    return daemonSettingsState
   }
 
   func setChargeLimitOverride(_ enabled: Bool) async throws {

@@ -4,11 +4,13 @@ import smc_power
 struct SettingsView: View {
   @State private var selectedTab: SettingsTab = .general
   @State private var columnVisibility: NavigationSplitViewVisibility = .all
+  @State private var chargingSettingsModel: ChargingSettingsModel
 
   private let capabilities: DeviceCapabilities
   private let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
   init(capabilities: DeviceCapabilities) {
     self.capabilities = capabilities
+    _chargingSettingsModel = State(initialValue: ChargingSettingsModel())
   }
 
   var body: some View {
@@ -42,9 +44,12 @@ struct SettingsView: View {
         case .dashboard:
           DashboardSettingsView()
         case .charging:
-          ChargingSettingsView(capabilities: capabilities)
+          ChargingSettingsView(
+            capabilities: capabilities,
+            settingsModel: chargingSettingsModel
+          )
         case .advanced:
-          AdvancedSettingsView()
+          AdvancedSettingsView(chargingSettingsModel: chargingSettingsModel)
         }
       }
     }
