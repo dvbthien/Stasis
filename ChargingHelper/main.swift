@@ -4,7 +4,7 @@ import smc_power
 
 let logger = Logger(
     subsystem: "com.srimanachanta.stasis-daemon",
-    category: "ServiceDelegate"
+    category: "DaemonStartup"
 )
 
 let battery: SMCBattery
@@ -17,51 +17,55 @@ do {
     exit(1)
 }
 
-class ServiceDelegate: NSObject, NSXPCListenerDelegate {
-    let helper: ChargingHelper
+let capabilities = DaemonCapabilities(
+    chargeControlMode: ChargeControlMode(smcMode: battery.capabilities.chargeControlMode),
+    adapterControl: adapter.capabilities.powerControl,
+    magSafeLEDKeyAvailable: adapter.capabilities.magSafeControl
+)
+let daemonVersion = Bundle.main.object(
+    forInfoDictionaryKey: "CFBundleShortVersionString"
+) as? String ?? "1.0"
+let hardware = ChargingHelper(battery: battery, adapter: adapter)
+let clients = DaemonClientRegistry()
 
-    init(helper: ChargingHelper) {
-        self.helper = helper
-    }
-
-    func listener(
-        _ listener: NSXPCListener,
-        shouldAcceptNewConnection newConnection: NSXPCConnection
-    ) -> Bool {
-        newConnection.exportedInterface = NSXPCInterface(
-            with: (any ChargingHelperProtocol).self
-        )
-        newConnection.exportedObject = helper
-
-        logger.info("XPC connection accepted")
-
-        newConnection.invalidationHandler = { [weak self] in
-            guard let self else { return }
-            logger.info("XPC connection invalidated, resetting SMC keys to defaults")
-            self.helper.resetToDefaults()
-            // Do NOT exit(0) here. This daemon is registered as a long-lived
-            // SMAppService daemon via launchd, and a single client (the main
-            // app) disconnecting — e.g. on app quit, or transiently across a
-            // sleep/wake cycle — does not mean the daemon itself should die.
-            // Exiting here would force launchd to relaunch the daemon (and
-            // re-probe SMC) on every reconnect, which is both wasteful and,
-            // if reconnects happen frequently, was the underlying driver of
-            // the helper churn/memory growth this fix addresses. The daemon
-            // is cheap to leave running and idle; SMC state is safely reset
-            // above regardless of whether the process keeps living.
-        }
-
-        newConnection.resume()
-        return true
-    }
+let settingsStore: DaemonSettingsStore
+do {
+    settingsStore = try DaemonSettingsStore(
+        persistence: UserDefaultsDaemonSettingsPersistence(),
+        capabilities: capabilities
+    )
+} catch {
+    logger.fault("Failed to load daemon settings: \(error.localizedDescription)")
+    exit(1)
 }
 
-let helper = ChargingHelper(battery: battery, adapter: adapter)
-let delegate = ServiceDelegate(helper: helper)
-let listener = NSXPCListener(
-    machServiceName: "com.srimanachanta.stasis-daemon"
+let stateStore = DaemonStateStore(
+    capabilities: capabilities,
+    hardware: hardware,
+    daemonVersion: daemonVersion
 )
-listener.delegate = delegate
-listener.resume()
+let commandHandler = ChargingDaemonCommandHandler(
+    settingsStore: settingsStore,
+    stateStore: stateStore,
+    hardware: hardware,
+    capabilities: capabilities,
+    daemonVersion: daemonVersion,
+    clients: clients
+)
+
+let clientValidator = DaemonClientValidator.forCurrentBuild()
+if clientValidator.isUsingAdHocRequirement {
+    logger.warning(
+        "Daemon has no Team ID; restricting XPC clients by app identifier for this local build"
+    )
+}
+
+let server = StasisDaemonXPCServer(
+    commandHandler: commandHandler,
+    clientValidator: clientValidator,
+    clients: clients
+)
+server.start()
+logger.info("Stasis daemon XPC server started")
 
 dispatchMain()

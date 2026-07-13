@@ -13,11 +13,25 @@ class ChargingDaemonManager {
 
   private let service: SMAppService
   private var connection: NSXPCConnection?
+  @ObservationIgnored private lazy var callbackReceiver = ChargingDaemonCallbackReceiver(
+    stateDidChange: { [weak self] payload in
+      Task { @MainActor in
+        self?.receiveSnapshot(payload)
+      }
+    },
+    settingsDidChange: { [weak self] payload in
+      Task { @MainActor in
+        self?.receiveSettings(payload)
+      }
+    }
+  )
 
   private let logger = Logger.stasis("ChargingDaemonManager")
 
   private(set) var helperStatus: ChargingHelperStatus
   private(set) var connectionStatus: ChargingDaemonConnectionStatus = .disconnected
+  private(set) var daemonSettingsState: DaemonSettingsState?
+  private(set) var daemonSnapshot: DaemonSnapshot?
 
   var isInstalled: Bool {
     service.status == .enabled
@@ -78,20 +92,20 @@ class ChargingDaemonManager {
     }
   }
 
-  func getHelper(errorHandler: @escaping @Sendable (Error) -> Void) -> ChargingHelperProtocol? {
+  func getHelper(errorHandler: @escaping @Sendable (Error) -> Void) -> ChargingDaemonProtocol? {
     if connection == nil {
       connect()
     }
     guard let connection else { return nil }
     return connection.remoteObjectProxyWithErrorHandler(errorHandler)
-      as? ChargingHelperProtocol
+      as? ChargingDaemonProtocol
   }
 
   func executeCommand(
     _ label: String,
     operation:
       @escaping @MainActor (
-        ChargingHelperProtocol,
+        ChargingDaemonProtocol,
         @escaping @Sendable (Bool, String?) -> Void
       ) -> Void
   ) async throws {
@@ -116,8 +130,19 @@ class ChargingDaemonManager {
     // Keep verification side-effect free. Capability-specific SMC commands
     // can fail even when the daemon is reachable.
     try await executeCommand("Verify charging daemon") { helper, reply in
-      helper.checkHealth { success, errorMessage in
-        reply(success, success ? nil : errorMessage ?? "Charging daemon did not respond")
+      helper.checkHealth { payload, errorMessage in
+        Task { @MainActor in
+          guard let payload else {
+            reply(false, errorMessage ?? "Charging daemon did not respond")
+            return
+          }
+          do {
+            _ = try DaemonPayloadCodec.decode(DaemonHealth.self, from: payload)
+            reply(true, nil)
+          } catch {
+            reply(false, "Invalid daemon health response: \(error.localizedDescription)")
+          }
+        }
       }
     }
   }
@@ -135,8 +160,12 @@ class ChargingDaemonManager {
       machServiceName: Self.machServiceName
     )
     newConnection.remoteObjectInterface = NSXPCInterface(
-      with: ChargingHelperProtocol.self
+      with: ChargingDaemonProtocol.self
     )
+    newConnection.exportedInterface = NSXPCInterface(
+      with: ChargingDaemonClientProtocol.self
+    )
+    newConnection.exportedObject = callbackReceiver
 
     newConnection.invalidationHandler = { [weak self, weak newConnection] in
       Task { @MainActor in
@@ -160,6 +189,7 @@ class ChargingDaemonManager {
 
     newConnection.resume()
     connection = newConnection
+    synchronizeInitialState()
   }
 
   func disconnect() {
@@ -182,7 +212,7 @@ class ChargingDaemonManager {
     continuation: CheckedContinuation<Void, any Error>,
     operation:
       @escaping @MainActor (
-        ChargingHelperProtocol,
+        ChargingDaemonProtocol,
         @escaping @Sendable (Bool, String?) -> Void
       ) -> Void
   ) {
@@ -266,6 +296,138 @@ class ChargingDaemonManager {
     case .disconnected, .connecting, .startupFailed, .runtimeFailed:
       .startupFailed(message)
     }
+  }
+
+  private func synchronizeInitialState() {
+    guard
+      let helper = getHelper(errorHandler: { [weak self] error in
+        Task { @MainActor in
+          self?.recordRuntimeError(error, while: "Initial daemon settings sync")
+        }
+      })
+    else { return }
+
+    helper.getSettings { [weak self] payload, errorMessage in
+      Task { @MainActor in
+        guard let self else { return }
+        guard let payload else {
+          self.connectionStatus = .runtimeFailed(
+            errorMessage ?? "Daemon did not return settings"
+          )
+          return
+        }
+
+        do {
+          let state = try DaemonPayloadCodec.decode(DaemonSettingsState.self, from: payload)
+          if state.needsLegacyImport {
+            self.importLegacySettings()
+          } else {
+            self.daemonSettingsState = state
+            self.requestInitialSnapshot()
+          }
+        } catch {
+          self.recordRuntimeError(error, while: "Decode daemon settings")
+        }
+      }
+    }
+  }
+
+  private func importLegacySettings() {
+    guard
+      let payload = try? DaemonPayloadCodec.encode(DaemonSettings.currentAppDefaults),
+      let helper = getHelper(errorHandler: { [weak self] error in
+        Task { @MainActor in
+          self?.recordRuntimeError(error, while: "Legacy settings import")
+        }
+      })
+    else { return }
+
+    helper.importLegacySettings(payload: payload) { [weak self] response, errorMessage in
+      Task { @MainActor in
+        guard let self else { return }
+        guard let response else {
+          self.connectionStatus = .runtimeFailed(
+            errorMessage ?? "Daemon rejected legacy settings import"
+          )
+          return
+        }
+        do {
+          self.daemonSettingsState = try DaemonPayloadCodec.decode(
+            DaemonSettingsState.self,
+            from: response
+          )
+          self.requestInitialSnapshot()
+        } catch {
+          self.recordRuntimeError(error, while: "Decode imported daemon settings")
+        }
+      }
+    }
+  }
+
+  private func requestInitialSnapshot() {
+    guard
+      let helper = getHelper(errorHandler: { [weak self] error in
+        Task { @MainActor in
+          self?.recordRuntimeError(error, while: "Initial daemon snapshot sync")
+        }
+      })
+    else { return }
+
+    helper.getSnapshot { [weak self] payload, errorMessage in
+      Task { @MainActor in
+        guard let self else { return }
+        guard let payload else {
+          self.connectionStatus = .runtimeFailed(
+            errorMessage ?? "Daemon did not return a snapshot"
+          )
+          return
+        }
+        self.receiveSnapshot(payload)
+        self.connectionStatus = .connected
+      }
+    }
+  }
+
+  private func receiveSettings(_ payload: Data) {
+    do {
+      daemonSettingsState = try DaemonPayloadCodec.decode(
+        DaemonSettingsState.self,
+        from: payload
+      )
+    } catch {
+      recordRuntimeError(error, while: "Decode daemon settings callback")
+    }
+  }
+
+  private func receiveSnapshot(_ payload: Data) {
+    do {
+      daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
+    } catch {
+      recordRuntimeError(error, while: "Decode daemon snapshot callback")
+    }
+  }
+}
+
+nonisolated final class ChargingDaemonCallbackReceiver: NSObject, ChargingDaemonClientProtocol,
+  @unchecked Sendable
+{
+  private let stateDidChangeHandler: @Sendable (Data) -> Void
+  private let settingsDidChangeHandler: @Sendable (Data) -> Void
+
+  init(
+    stateDidChange: @escaping @Sendable (Data) -> Void,
+    settingsDidChange: @escaping @Sendable (Data) -> Void
+  ) {
+    stateDidChangeHandler = stateDidChange
+    settingsDidChangeHandler = settingsDidChange
+  }
+
+  nonisolated func stateDidChange(_ payload: Data) {
+    stateDidChangeHandler(payload)
+  }
+
+  nonisolated func settingsDidChange(_ payload: Data) {
+    settingsDidChangeHandler(payload)
   }
 }
 

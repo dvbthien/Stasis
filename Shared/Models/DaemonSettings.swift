@@ -2,9 +2,8 @@ import Foundation
 
 /// Canonical charging settings exchanged between Stasis and its daemon.
 ///
-/// Validation and persistence intentionally remain for a later migration
-/// phase. Keeping this as a plain value now lets policy code stop depending on
-/// app-only `Defaults` while preserving the current runtime behavior.
+/// The daemon validates and persists this complete value atomically. App-side
+/// defaults are only used for the one-time legacy import handshake.
 struct DaemonSettings: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
 
