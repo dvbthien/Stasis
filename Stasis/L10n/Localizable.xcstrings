@@ -4,9 +4,6 @@
     "%lld%%" : {
       "shouldTranslate" : false
     },
-    "%lld°C" : {
-      "shouldTranslate" : false
-    },
     "Adapter" : {
       "localizations" : {
         "de" : {
@@ -167,15 +164,8 @@
         }
       }
     },
-    "Approve Stasis in System Settings → Login Items to continue." : {
-      "localizations" : {
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cho phép Stasis trong Cài đặt hệ thống → Mục đăng nhập để tiếp tục."
-          }
-        }
-      }
+    "Approve Stasis in Login Items to enable charge management." : {
+
     },
     "Automatic discharge" : {
       "localizations" : {
@@ -216,6 +206,9 @@
           }
         }
       }
+    },
+    "Automatic discharge requires adapter control support from this Mac." : {
+
     },
     "Automatically resume charging when the battery drops below the threshold relative to your charge limit." : {
       "localizations" : {
@@ -266,6 +259,12 @@
           }
         }
       }
+    },
+    "Battery & Power Adapter" : {
+
+    },
+    "Battery condition details shown alongside current status." : {
+
     },
     "Battery Health" : {
       "localizations" : {
@@ -527,6 +526,9 @@
         }
       }
     },
+    "Calculating..." : {
+
+    },
     "Charge limit" : {
       "localizations" : {
         "de" : {
@@ -617,45 +619,8 @@
         }
       }
     },
-    "Charge management is not supported on this device." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Lademanagement wird auf diesem Gerät nicht unterstützt."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La gestión de carga no es compatible con este dispositivo."
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La gestión de carga no es compatible con este dispositivo."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このデバイスでは充電管理はサポートされていません。"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Quản lý sạc không được hỗ trợ trên thiết bị này."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这台设备不支持充电管理。"
-          }
-        }
-      }
+    "Charge management is unavailable on this Mac." : {
+
     },
     "Charging" : {
       "localizations" : {
@@ -937,6 +902,15 @@
         }
       }
     },
+    "Choose which live battery and power metrics appear in the menu bar dropdown." : {
+
+    },
+    "Control how Stasis manages memory." : {
+
+    },
+    "Control how Stasis starts, appears in the menu bar, and sends notifications." : {
+
+    },
     "Control when Stasis sends you notifications." : {
       "localizations" : {
         "de" : {
@@ -1197,6 +1171,9 @@
         }
       }
     },
+    "Discharging" : {
+
+    },
     "Display battery percentage next to or inside the menu bar icon." : {
       "localizations" : {
         "vi" : {
@@ -1257,45 +1234,8 @@
         }
       }
     },
-    "Failed to install charging helper" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ladehelfer konnte nicht installiert werden"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Error al instalar el asistente de carga"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Error al instalar el asistente de carga"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "充電ヘルパーのインストールに失敗しました"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể cài đặt công cụ hỗ trợ sạc"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "充电助手安装失败"
-          }
-        }
-      }
+    "Fine-tune battery readings and maintenance behavior." : {
+
     },
     "Force Discharge" : {
       "localizations" : {
@@ -1427,6 +1367,9 @@
         }
       }
     },
+    "Hardware percentage can differ from the calibrated value macOS shows in the battery menu." : {
+
+    },
     "Health" : {
       "localizations" : {
         "de" : {
@@ -1507,6 +1450,9 @@
         }
       }
     },
+    "Heat protection requires charging control support from this Mac." : {
+
+    },
     "Hidden" : {
       "localizations" : {
         "vi" : {
@@ -1526,6 +1472,9 @@
           }
         }
       }
+    },
+    "Install Helper" : {
+
     },
     "Launch at login" : {
       "localizations" : {
@@ -1767,6 +1716,9 @@
         }
       }
     },
+    "Manage charging, battery protection, and MagSafe LED behavior." : {
+
+    },
     "Manage MagSafe LED" : {
       "localizations" : {
         "de" : {
@@ -1806,6 +1758,9 @@
           }
         }
       }
+    },
+    "Memory Management" : {
+
     },
     "Menu Bar Icon" : {
       "localizations" : {
@@ -1856,6 +1811,9 @@
           }
         }
       }
+    },
+    "Not Charging" : {
+
     },
     "Notifications" : {
       "localizations" : {
@@ -1937,45 +1895,8 @@
         }
       }
     },
-    "Ok" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ok"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ok"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ok"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Đồng ý"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "OK"
-          }
-        }
-      }
+    "Open Login Items" : {
+
     },
     "Orange" : {
       "localizations" : {
@@ -2057,6 +1978,9 @@
         }
       }
     },
+    "Plugged In (Not Charging)" : {
+
+    },
     "Power" : {
       "localizations" : {
         "de" : {
@@ -2097,6 +2021,9 @@
         }
       }
     },
+    "Power Adapter" : {
+
+    },
     "Power distribution diagram" : {
       "localizations" : {
         "de" : {
@@ -2136,6 +2063,9 @@
           }
         }
       }
+    },
+    "Power flow and adapter metrics shown in the menu dropdown." : {
+
     },
     "Power source" : {
       "localizations" : {
@@ -2267,6 +2197,15 @@
         }
       }
     },
+    "Reconnect" : {
+
+    },
+    "Restart the app when Settings closes" : {
+
+    },
+    "Retry" : {
+
+    },
     "Sailing Mode" : {
       "localizations" : {
         "vi" : {
@@ -2276,6 +2215,9 @@
           }
         }
       }
+    },
+    "Sailing mode requires charging control support from this Mac." : {
+
     },
     "Settings" : {
       "localizations" : {
@@ -2393,45 +2335,14 @@
         }
       }
     },
-    "Stasis Settings" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stasis-Einstellungen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajustes de Stasis"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajustes de Stasis"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stasisの設定"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cài đặt Stasis"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stasis 设置"
-          }
-        }
-      }
+    "Stasis" : {
+
+    },
+    "Stasis can still manage charging, but this Mac does not expose MagSafe LED controls." : {
+
+    },
+    "Stasis can still monitor battery status, but this hardware does not expose charging or adapter controls." : {
+
     },
     "Status" : {
       "localizations" : {
@@ -2613,6 +2524,12 @@
         }
       }
     },
+    "Try Again" : {
+
+    },
+    "Unknown" : {
+
+    },
     "Uptime" : {
       "localizations" : {
         "de" : {
@@ -2673,45 +2590,11 @@
         }
       }
     },
-    "Visuals" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Darstellung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Visuales"
-          }
-        },
-        "es-US" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Visuales"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "表示"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trực quan dòng điện"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "视觉图"
-          }
-        }
-      }
+    "Use this only if you prefer raw battery readings." : {
+
+    },
+    "Version: %@" : {
+
     }
   },
   "version" : "1.1"

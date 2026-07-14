@@ -50,6 +50,15 @@ public struct DeviceCapabilities: Sendable {
         self.magsafeLEDControl = magsafeLEDControl
     }
 
+    /// Default value to use before the helper has been probed — all
+    /// capabilities assumed unsupported until proven otherwise.
+    public static let unknown = DeviceCapabilities(
+        chargingControl: false,
+        adapterControl: false,
+        hasMagSafe: false,
+        magsafeLEDControl: false
+    )
+
     public static func from(
         battery: BatteryCapabilities,
         adapter: AdapterCapabilities

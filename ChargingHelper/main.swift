@@ -3,7 +3,7 @@ import os.log
 import smc_power
 
 let logger = Logger(
-    subsystem: "com.srimanachanta.stasis.charging-helper",
+    subsystem: "com.srimanachanta.stasis-daemon",
     category: "ServiceDelegate"
 )
 
@@ -39,7 +39,16 @@ class ServiceDelegate: NSObject, NSXPCListenerDelegate {
             guard let self else { return }
             logger.info("XPC connection invalidated, resetting SMC keys to defaults")
             self.helper.resetToDefaults()
-            exit(0)
+            // Do NOT exit(0) here. This daemon is registered as a long-lived
+            // SMAppService daemon via launchd, and a single client (the main
+            // app) disconnecting — e.g. on app quit, or transiently across a
+            // sleep/wake cycle — does not mean the daemon itself should die.
+            // Exiting here would force launchd to relaunch the daemon (and
+            // re-probe SMC) on every reconnect, which is both wasteful and,
+            // if reconnects happen frequently, was the underlying driver of
+            // the helper churn/memory growth this fix addresses. The daemon
+            // is cheap to leave running and idle; SMC state is safely reset
+            // above regardless of whether the process keeps living.
         }
 
         newConnection.resume()
@@ -50,7 +59,7 @@ class ServiceDelegate: NSObject, NSXPCListenerDelegate {
 let helper = ChargingHelper(battery: battery, adapter: adapter)
 let delegate = ServiceDelegate(helper: helper)
 let listener = NSXPCListener(
-    machServiceName: "com.srimanachanta.stasis.charging-helper"
+    machServiceName: "com.srimanachanta.stasis-daemon"
 )
 listener.delegate = delegate
 listener.resume()
