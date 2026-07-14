@@ -9,6 +9,13 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
     private let clientValidator: any DaemonClientValidating
     private let clients: DaemonClientRegistry
     private var isRunning = false
+    // NSXPCListenerDelegate does not retain accepted connections for you —
+    // the delegate is responsible for keeping a strong reference to each one
+    // for as long as it should stay alive. We key by clientID so teardown is
+    // a simple dictionary removal. Guarded by a lock because delegate
+    // callbacks are not guaranteed to run on the main thread.
+    private let activeConnectionsLock = NSLock()
+    private var activeConnections: [UUID: NSXPCConnection] = [:]
     private let logger = Logger(
         subsystem: "com.srimanachanta.stasis-daemon",
         category: "XPCServer"
@@ -39,6 +46,11 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
         guard isRunning else { return }
         listener.suspend()
         isRunning = false
+        let connections = activeConnectionsLock.withLock {
+            defer { activeConnections.removeAll() }
+            return Array(activeConnections.values)
+        }
+        connections.forEach { $0.invalidate() }
     }
 
     func listener(
@@ -70,12 +82,20 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
             clients.add(client, id: clientID)
         }
 
-        newConnection.invalidationHandler = { [weak clients, weak scopedHandler] in
+        newConnection.invalidationHandler = { [weak self, weak clients, weak scopedHandler] in
             clients?.remove(id: clientID)
             scopedHandler?.connectionInvalidated()
+            if let self {
+                self.activeConnectionsLock.withLock {
+                    _ = self.activeConnections.removeValue(forKey: clientID)
+                }
+            }
         }
         newConnection.interruptionHandler = { [weak scopedHandler] in
             scopedHandler?.connectionInvalidated()
+        }
+        activeConnectionsLock.withLock {
+            activeConnections[clientID] = newConnection
         }
         newConnection.resume()
         logger.info(

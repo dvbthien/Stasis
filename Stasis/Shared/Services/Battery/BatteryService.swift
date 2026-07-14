@@ -119,9 +119,9 @@ class BatteryService {
       hardwareBatteryPercentage: snapshot.battery.hardwarePercentage,
       isCharging: snapshot.battery.isCharging,
       timeRemaining: snapshot.battery.timeRemaining,
-      batteryVoltage: snapshot.battery.voltage,
-      batteryCurrent: snapshot.battery.current,
-      batteryPower: snapshot.battery.power,
+      batteryVoltage: metrics.batteryVoltage,
+      batteryCurrent: metrics.batteryCurrent,
+      batteryPower: metrics.batteryPower,
       batteryTemperature: snapshot.battery.temperature,
       batteryHealth: snapshot.battery.health,
       cycleCount: snapshot.battery.cycleCount,
@@ -130,18 +130,27 @@ class BatteryService {
     let updatedAdapter = AdapterMetrics(
       adapterConnected: snapshot.adapter.physicallyConnected,
       powerEnabled: snapshot.adapter.powerEnabled,
-      adapterVoltage: snapshot.adapter.voltage,
-      adapterCurrent: snapshot.adapter.current,
-      adapterPower: snapshot.adapter.power
+      adapterVoltage: adapterMetrics.adapterVoltage,
+      adapterCurrent: adapterMetrics.adapterCurrent,
+      adapterPower: adapterMetrics.adapterPower
     )
-
     applyMetrics(updatedBattery, adapter: updatedAdapter)
     applyCapabilities(snapshot.capabilities)
     scheduleSMCTelemetryRefresh()
   }
 
   private func applyFallbackSnapshot() {
-    applyMetrics(fallbackMetrics, adapter: fallbackAdapterMetrics)
+    var updatedBattery = fallbackMetrics
+    updatedBattery.batteryVoltage = metrics.batteryVoltage
+    updatedBattery.batteryCurrent = metrics.batteryCurrent
+    updatedBattery.batteryPower = metrics.batteryPower
+
+    var updatedAdapter = fallbackAdapterMetrics
+    updatedAdapter.adapterVoltage = adapterMetrics.adapterVoltage
+    updatedAdapter.adapterCurrent = adapterMetrics.adapterCurrent
+    updatedAdapter.adapterPower = adapterMetrics.adapterPower
+
+    applyMetrics(updatedBattery, adapter: updatedAdapter)
     scheduleSMCTelemetryRefresh()
   }
 
@@ -200,7 +209,7 @@ class BatteryService {
     guard !isStopped, !telemetryRequested else { return }
     smcSingleTelemetryTask?.cancel()
     smcSingleTelemetryTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(1))
+      try? await Task.sleep(for: .seconds(3))
       guard
         !Task.isCancelled,
         let self,

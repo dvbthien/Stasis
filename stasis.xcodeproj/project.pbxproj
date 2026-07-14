@@ -9,12 +9,12 @@
 /* Begin PBXBuildFile section */
 		A6638F812F1C0FD60047FA8E /* Defaults in Frameworks */ = {isa = PBXBuildFile; productRef = A6638F802F1C0FD60047FA8E /* Defaults */; };
 		A66D62D92F44069300B996E7 /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
-		A66D62DD2F44069900B996E7 /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
 		A66D62E22F44076F00B996E7 /* SMCKit in Frameworks */ = {isa = PBXBuildFile; productRef = A66D62E12F44076F00B996E7 /* SMCKit */; };
-		A68B3E292F19ABCB00F115E4 /* StasisMonitorHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		A6AE19892F480D41003B09FA /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
 		A6AE198A2F480D41003B09FA /* smc_power.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A6B100092F5A000000000009 /* SMCReaderHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A6B100082F5A000000000008 /* SMCReaderHelper.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A6B1000D2F5A00000000000D /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
 		A6E6D7322F3A00000069CF9F /* StasisDaemon in Copy Helper Tools */ = {isa = PBXBuildFile; fileRef = A6E6D71E2F39DD350069CF9F /* StasisDaemon */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A6F2000C2F5100000000000C /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,21 +25,14 @@
 			remoteGlobalIDString = A66D62CD2F44067C00B996E7;
 			remoteInfo = "smc-profiles";
 		};
-		A66D62DF2F44069900B996E7 /* PBXContainerItemProxy */ = {
+		A6B1000A2F5A00000000000A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A68B3E042F19AB4B00F115E4 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = A66D62CD2F44067C00B996E7;
-			remoteInfo = "smc-profiles";
+			remoteGlobalIDString = A6B100022F5A000000000002;
+			remoteInfo = SMCReaderHelper;
 		};
-		A68B3E272F19ABCB00F115E4 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A68B3E042F19AB4B00F115E4 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A68B3E1D2F19ABCB00F115E4;
-			remoteInfo = helper;
-		};
-		A6AE198B2F480D41003B09FA /* PBXContainerItemProxy */ = {
+		A6B100132F5A000000000013 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A68B3E042F19AB4B00F115E4 /* Project object */;
 			proxyType = 1;
@@ -53,20 +46,23 @@
 			remoteGlobalIDString = A6E6D71D2F39DD350069CF9F;
 			remoteInfo = "charging-helper";
 		};
+		A6F1000B2F5000000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A68B3E042F19AB4B00F115E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A68B3E0B2F19AB4B00F115E4;
+			remoteInfo = stasis;
+		};
+		A6F2000A2F5100000000000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A68B3E042F19AB4B00F115E4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A66D62CD2F44067C00B996E7;
+			remoteInfo = "smc-power";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		A68B3E2E2F19ABCB00F115E4 /* Embed XPC Services */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
-			dstSubfolderSpec = 16;
-			files = (
-				A68B3E292F19ABCB00F115E4 /* StasisMonitorHelper.xpc in Embed XPC Services */,
-			);
-			name = "Embed XPC Services";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		A6AE198D2F480D41003B09FA /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -76,6 +72,17 @@
 				A6AE198A2F480D41003B09FA /* smc_power.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6B1000E2F5A00000000000E /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				A6B100092F5A000000000009 /* SMCReaderHelper.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A6E6D7332F3A00000069CF9F /* Copy Helper Tools */ = {
@@ -95,22 +102,24 @@
 		A66D62CE2F44067C00B996E7 /* smc_power.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = smc_power.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A67470412FA4F4EA00925FF2 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		A68B3E0C2F19AB4B00F115E4 /* stasis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = stasis.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = StasisMonitorHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		A6B100082F5A000000000008 /* SMCReaderHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = SMCReaderHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6E6D71E2F39DD350069CF9F /* StasisDaemon */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = StasisDaemon; sourceTree = BUILT_PRODUCTS_DIR; };
+		A6F100032F50000000000003 /* StasisTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StasisTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A6F200022F51000000000002 /* StasisDaemonTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StasisDaemonTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A6AE1A372F484C94003B09FA /* Exceptions for "Helper" folder in "stasis" target */ = {
+		A6B100152F5A000000000015 /* Exceptions for "SMCReaderHelper" folder in "SMCReaderHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				HelperProtocol.swift,
+				Info.plist,
 			);
-			target = A68B3E0B2F19AB4B00F115E4 /* stasis */;
+			target = A6B100022F5A000000000002 /* SMCReaderHelper */;
 		};
-		A6E6D7352F3A00000069CF9F /* Exceptions for "ChargingHelper" folder in "stasis" target */ = {
+		A6F700012F57000000000001 /* Exceptions for "Shared" folder in "stasis" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				ChargingHelperProtocol.swift,
+				Policy/ChargingPolicy.swift,
 			);
 			target = A68B3E0B2F19AB4B00F115E4 /* stasis */;
 		};
@@ -127,20 +136,40 @@
 			path = Stasis;
 			sourceTree = "<group>";
 		};
-		A68B3E1F2F19ABCB00F115E4 /* Helper */ = {
+		A6B100012F5A000000000001 /* SMCReaderHelper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				A6AE1A372F484C94003B09FA /* Exceptions for "Helper" folder in "stasis" target */,
+				A6B100152F5A000000000015 /* Exceptions for "SMCReaderHelper" folder in "SMCReaderHelper" target */,
 			);
-			path = Helper;
+			path = SMCReaderHelper;
 			sourceTree = "<group>";
 		};
 		A6E6D71F2F39DD350069CF9F /* ChargingHelper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				A6E6D7352F3A00000069CF9F /* Exceptions for "ChargingHelper" folder in "stasis" target */,
-			);
 			path = ChargingHelper;
+			sourceTree = "<group>";
+		};
+		A6F100012F50000000000001 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A6F700012F57000000000001 /* Exceptions for "Shared" folder in "stasis" target */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A6F100022F50000000000002 /* StasisTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StasisTests;
+			sourceTree = "<group>";
+		};
+		A6F200012F51000000000001 /* ChargingHelper/Core */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ChargingHelper/Core;
+			sourceTree = "<group>";
+		};
+		A6F2000D2F5100000000000D /* StasisDaemonTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = StasisDaemonTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -158,16 +187,15 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A6AE19892F480D41003B09FA /* smc_power.framework in Frameworks */,
 				A6638F812F1C0FD60047FA8E /* Defaults in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A68B3E1B2F19ABCB00F115E4 /* Frameworks */ = {
+		A6B100052F5A000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A66D62DD2F44069900B996E7 /* smc_power.framework in Frameworks */,
+				A6B1000D2F5A00000000000D /* smc_power.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,6 +207,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A6F100062F50000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6F200052F51000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A6F2000C2F5100000000000C /* smc_power.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -186,12 +229,16 @@
 			isa = PBXGroup;
 			children = (
 				A67470412FA4F4EA00925FF2 /* README.md */,
+				A6F100012F50000000000001 /* Shared */,
 				A68B3E0E2F19AB4B00F115E4 /* Stasis */,
-				A68B3E1F2F19ABCB00F115E4 /* Helper */,
+				A6F100022F50000000000002 /* StasisTests */,
+				A6F2000D2F5100000000000D /* StasisDaemonTests */,
 				A6E6D71F2F39DD350069CF9F /* ChargingHelper */,
+				A6B100012F5A000000000001 /* SMCReaderHelper */,
 				A66D62CF2F44067C00B996E7 /* SMCPower */,
 				A68B3E532F1A942600F115E4 /* Frameworks */,
 				A68B3E0D2F19AB4B00F115E4 /* Products */,
+				FD3227CC3004D2A500549078 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -199,9 +246,11 @@
 			isa = PBXGroup;
 			children = (
 				A68B3E0C2F19AB4B00F115E4 /* stasis.app */,
-				A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */,
 				A6E6D71E2F39DD350069CF9F /* StasisDaemon */,
+				A6B100082F5A000000000008 /* SMCReaderHelper.xpc */,
 				A66D62CE2F44067C00B996E7 /* smc_power.framework */,
+				A6F100032F50000000000003 /* StasisTests.xctest */,
+				A6F200022F51000000000002 /* StasisDaemonTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -211,6 +260,14 @@
 			children = (
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		FD3227CC3004D2A500549078 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				A6F200012F51000000000001 /* ChargingHelper/Core */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -257,7 +314,7 @@
 				A68B3E082F19AB4B00F115E4 /* Sources */,
 				A68B3E092F19AB4B00F115E4 /* Frameworks */,
 				A68B3E0A2F19AB4B00F115E4 /* Resources */,
-				A68B3E2E2F19ABCB00F115E4 /* Embed XPC Services */,
+				A6B1000E2F5A00000000000E /* Embed XPC Services */,
 				A6E6D7332F3A00000069CF9F /* Copy Helper Tools */,
 				A6E6D7342F3A00000069CF9F /* Copy LaunchDaemon Plist */,
 				A6AE198D2F480D41003B09FA /* Embed Frameworks */,
@@ -265,12 +322,12 @@
 			buildRules = (
 			);
 			dependencies = (
-				A68B3E282F19ABCB00F115E4 /* PBXTargetDependency */,
+				A6B1000B2F5A00000000000B /* PBXTargetDependency */,
 				A6E6D7312F3A00000069CF9F /* PBXTargetDependency */,
-				A6AE198C2F480D41003B09FA /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A68B3E0E2F19AB4B00F115E4 /* Stasis */,
+				A6F100012F50000000000001 /* Shared */,
 			);
 			name = stasis;
 			packageProductDependencies = (
@@ -280,27 +337,28 @@
 			productReference = A68B3E0C2F19AB4B00F115E4 /* stasis.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A68B3E1D2F19ABCB00F115E4 /* StasisMonitorHelper */ = {
+		A6B100022F5A000000000002 /* SMCReaderHelper */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A68B3E2B2F19ABCB00F115E4 /* Build configuration list for PBXNativeTarget "StasisMonitorHelper" */;
+			buildConfigurationList = A6B100102F5A000000000010 /* Build configuration list for PBXNativeTarget "SMCReaderHelper" */;
 			buildPhases = (
-				A68B3E1A2F19ABCB00F115E4 /* Sources */,
-				A68B3E1B2F19ABCB00F115E4 /* Frameworks */,
-				A68B3E1C2F19ABCB00F115E4 /* Resources */,
+				A6B100032F5A000000000003 /* Sources */,
+				A6B100052F5A000000000005 /* Frameworks */,
+				A6B100062F5A000000000006 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				A66D62E02F44069900B996E7 /* PBXTargetDependency */,
+				A6B100142F5A000000000014 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				A68B3E1F2F19ABCB00F115E4 /* Helper */,
+				A6B100012F5A000000000001 /* SMCReaderHelper */,
+				A6F100012F50000000000001 /* Shared */,
 			);
-			name = StasisMonitorHelper;
+			name = SMCReaderHelper;
 			packageProductDependencies = (
 			);
-			productName = helper;
-			productReference = A68B3E1E2F19ABCB00F115E4 /* StasisMonitorHelper.xpc */;
+			productName = SMCReaderHelper;
+			productReference = A6B100082F5A000000000008 /* SMCReaderHelper.xpc */;
 			productType = "com.apple.product-type.xpc-service";
 		};
 		A6E6D71D2F39DD350069CF9F /* stasis-daemon */ = {
@@ -317,6 +375,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A6E6D71F2F39DD350069CF9F /* ChargingHelper */,
+				A6F100012F50000000000001 /* Shared */,
 			);
 			name = "stasis-daemon";
 			packageProductDependencies = (
@@ -324,6 +383,54 @@
 			productName = "charging-helper";
 			productReference = A6E6D71E2F39DD350069CF9F /* StasisDaemon */;
 			productType = "com.apple.product-type.tool";
+		};
+		A6F100042F50000000000004 /* StasisTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A6F100082F50000000000008 /* Build configuration list for PBXNativeTarget "StasisTests" */;
+			buildPhases = (
+				A6F100052F50000000000005 /* Sources */,
+				A6F100062F50000000000006 /* Frameworks */,
+				A6F100072F50000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A6F1000C2F5000000000000C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A6F100022F50000000000002 /* StasisTests */,
+			);
+			name = StasisTests;
+			packageProductDependencies = (
+			);
+			productName = StasisTests;
+			productReference = A6F100032F50000000000003 /* StasisTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		A6F200032F51000000000003 /* StasisDaemonTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A6F200072F51000000000007 /* Build configuration list for PBXNativeTarget "StasisDaemonTests" */;
+			buildPhases = (
+				A6F200042F51000000000004 /* Sources */,
+				A6F200052F51000000000005 /* Frameworks */,
+				A6F200062F51000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A6F2000B2F5100000000000B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A6F100012F50000000000001 /* Shared */,
+				A6F200012F51000000000001 /* ChargingHelper/Core */,
+				A6F2000D2F5100000000000D /* StasisDaemonTests */,
+			);
+			name = StasisDaemonTests;
+			packageProductDependencies = (
+			);
+			productName = StasisDaemonTests;
+			productReference = A6F200022F51000000000002 /* StasisDaemonTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -341,10 +448,17 @@
 					A68B3E0B2F19AB4B00F115E4 = {
 						CreatedOnToolsVersion = 26.2;
 					};
-					A68B3E1D2F19ABCB00F115E4 = {
+					A6B100022F5A000000000002 = {
 						CreatedOnToolsVersion = 26.2;
 					};
 					A6E6D71D2F39DD350069CF9F = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					A6F100042F50000000000004 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = A68B3E0B2F19AB4B00F115E4;
+					};
+					A6F200032F51000000000003 = {
 						CreatedOnToolsVersion = 26.2;
 					};
 				};
@@ -373,9 +487,11 @@
 			projectRoot = "";
 			targets = (
 				A68B3E0B2F19AB4B00F115E4 /* stasis */,
-				A68B3E1D2F19ABCB00F115E4 /* StasisMonitorHelper */,
+				A6B100022F5A000000000002 /* SMCReaderHelper */,
 				A6E6D71D2F39DD350069CF9F /* stasis-daemon */,
 				A66D62CD2F44067C00B996E7 /* smc-power */,
+				A6F100042F50000000000004 /* StasisTests */,
+				A6F200032F51000000000003 /* StasisDaemonTests */,
 			);
 		};
 /* End PBXProject section */
@@ -395,7 +511,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A68B3E1C2F19ABCB00F115E4 /* Resources */ = {
+		A6B100062F5A000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6F100072F50000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6F200062F51000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -438,7 +568,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A68B3E1A2F19ABCB00F115E4 /* Sources */ = {
+		A6B100032F5A000000000003 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -446,6 +576,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A6E6D71A2F39DD350069CF9F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6F100052F50000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6F200042F51000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -460,25 +604,30 @@
 			target = A66D62CD2F44067C00B996E7 /* smc-power */;
 			targetProxy = A66D62DB2F44069300B996E7 /* PBXContainerItemProxy */;
 		};
-		A66D62E02F44069900B996E7 /* PBXTargetDependency */ = {
+		A6B1000B2F5A00000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A6B100022F5A000000000002 /* SMCReaderHelper */;
+			targetProxy = A6B1000A2F5A00000000000A /* PBXContainerItemProxy */;
+		};
+		A6B100142F5A000000000014 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A66D62CD2F44067C00B996E7 /* smc-power */;
-			targetProxy = A66D62DF2F44069900B996E7 /* PBXContainerItemProxy */;
-		};
-		A68B3E282F19ABCB00F115E4 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A68B3E1D2F19ABCB00F115E4 /* StasisMonitorHelper */;
-			targetProxy = A68B3E272F19ABCB00F115E4 /* PBXContainerItemProxy */;
-		};
-		A6AE198C2F480D41003B09FA /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A66D62CD2F44067C00B996E7 /* smc-power */;
-			targetProxy = A6AE198B2F480D41003B09FA /* PBXContainerItemProxy */;
+			targetProxy = A6B100132F5A000000000013 /* PBXContainerItemProxy */;
 		};
 		A6E6D7312F3A00000069CF9F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A6E6D71D2F39DD350069CF9F /* stasis-daemon */;
 			targetProxy = A6E6D7302F3A00000069CF9F /* PBXContainerItemProxy */;
+		};
+		A6F1000C2F5000000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A68B3E0B2F19AB4B00F115E4 /* stasis */;
+			targetProxy = A6F1000B2F5000000000000B /* PBXContainerItemProxy */;
+		};
+		A6F2000B2F5100000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A66D62CD2F44067C00B996E7 /* smc-power */;
+			targetProxy = A6F2000A2F5100000000000A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -626,7 +775,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 15.7;
+				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -690,7 +839,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 15.7;
+				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -775,85 +924,58 @@
 			};
 			name = Release;
 		};
-		A68B3E2C2F19ABCB00F115E4 /* Debug */ = {
+		A6B100112F5A000000000011 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = helper/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = StasisMonitorHelper;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../../../../Frameworks";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SMCReaderHelper/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../../../Frameworks",
+					"@loader_path/../../../../Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis-monitor-helper";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.SMCReaderHelper;
+				PRODUCT_NAME = SMCReaderHelper;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				REGISTER_APP_GROUPS = YES;
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
-				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
-				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
-				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
-		A68B3E2D2F19ABCB00F115E4 /* Release */ = {
+		A6B100122F5A000000000012 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Manual;
-				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = helper/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = StasisMonitorHelper;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../../../../Frameworks";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SMCReaderHelper/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../../../Frameworks",
+					"@loader_path/../../../../Frameworks",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis-monitor-helper";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.SMCReaderHelper;
+				PRODUCT_NAME = SMCReaderHelper;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				REGISTER_APP_GROUPS = YES;
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
-				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
-				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
-				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				SKIP_INSTALL = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 			};
@@ -903,6 +1025,100 @@
 			};
 			name = Release;
 		};
+		A6F100092F50000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.8;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/stasis.app/Contents/MacOS/stasis";
+			};
+			name = Debug;
+		};
+		A6F1000A2F5000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.8;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/stasis.app/Contents/MacOS/stasis";
+			};
+			name = Release;
+		};
+		A6F200082F51000000000008 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.8;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.daemon.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A6F200092F51000000000009 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.8;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.daemon.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -933,11 +1149,11 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A68B3E2B2F19ABCB00F115E4 /* Build configuration list for PBXNativeTarget "StasisMonitorHelper" */ = {
+		A6B100102F5A000000000010 /* Build configuration list for PBXNativeTarget "SMCReaderHelper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A68B3E2C2F19ABCB00F115E4 /* Debug */,
-				A68B3E2D2F19ABCB00F115E4 /* Release */,
+				A6B100112F5A000000000011 /* Debug */,
+				A6B100122F5A000000000012 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -947,6 +1163,24 @@
 			buildConfigurations = (
 				A6E6D7232F39DD350069CF9F /* Debug */,
 				A6E6D7242F39DD350069CF9F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A6F100082F50000000000008 /* Build configuration list for PBXNativeTarget "StasisTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A6F100092F50000000000009 /* Debug */,
+				A6F1000A2F5000000000000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A6F200072F51000000000007 /* Build configuration list for PBXNativeTarget "StasisDaemonTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A6F200082F51000000000008 /* Debug */,
+				A6F200092F51000000000009 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
