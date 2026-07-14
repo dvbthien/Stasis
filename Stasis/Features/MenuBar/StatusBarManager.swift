@@ -45,7 +45,7 @@ class StatusBarManager {
             _ = batteryService.metrics
             _ = batteryService.adapterMetrics
             _ = lowPowerModeMonitor.isEnabled
-            _ = ChargingDaemonManager.shared.daemonSettingsState?.settings.useHardwarePercentage
+            _ = ChargingDaemonManager.shared.batteryPercentageSettings?.useHardwarePercentage
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -77,8 +77,8 @@ class StatusBarManager {
             adapter: batteryService.adapterMetrics,
             isLowPower: lowPowerModeMonitor.isEnabled,
             useHardwarePercentage:
-                ChargingDaemonManager.shared.daemonSettingsState?.settings.useHardwarePercentage
-                ?? Defaults[.useHardwarePercentage],
+                ChargingDaemonManager.shared.batteryPercentageSettings?.useHardwarePercentage
+                ?? false,
             displayLocation: Defaults[.batteryPercentageDisplayLocation],
             showState: Defaults[.showBatteryStateInStatusIcon]
         )

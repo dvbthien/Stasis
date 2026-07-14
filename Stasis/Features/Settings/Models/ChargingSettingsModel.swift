@@ -5,21 +5,28 @@ enum ChargingSettingsOperationError: LocalizedError {
   case saveInProgress
 
   var errorDescription: String? {
-    switch self {
-    case .saveInProgress:
-      "Wait for the current charging settings change to finish before removing the background service."
-    }
+    "Wait for the current charging settings change to finish before removing the background service."
   }
 }
 
 @MainActor
 protocol ChargingSettingsManaging: AnyObject {
-  var daemonSettingsState: DaemonSettingsState? { get }
+  var chargingManagementSettings: ChargingManagementSettings? { get }
+  var chargingThresholdSettings: ChargingThresholdSettings? { get }
+  var automaticDischargeSettings: AutomaticDischargeSettings? { get }
+  var sleepPreventionSettings: SleepPreventionSettings? { get }
+  var heatProtectionSettings: HeatProtectionSettings? { get }
+  var magSafeLEDSettings: MagSafeLEDSettings? { get }
+  var batteryPercentageSettings: BatteryPercentageSettings? { get }
   var daemonSnapshot: DaemonSnapshot? { get }
 
-  func synchronizeChargingSettings(
-    _ settings: DaemonSettings
-  ) async throws -> DaemonSettingsState
+  func setChargingManagementSettings(_ settings: ChargingManagementSettings) async throws -> ChargingManagementSettings
+  func setChargingThresholdSettings(_ settings: ChargingThresholdSettings) async throws -> ChargingThresholdSettings
+  func setAutomaticDischargeSettings(_ settings: AutomaticDischargeSettings) async throws -> AutomaticDischargeSettings
+  func setSleepPreventionSettings(_ settings: SleepPreventionSettings) async throws -> SleepPreventionSettings
+  func setHeatProtectionSettings(_ settings: HeatProtectionSettings) async throws -> HeatProtectionSettings
+  func setMagSafeLEDSettings(_ settings: MagSafeLEDSettings) async throws -> MagSafeLEDSettings
+  func setBatteryPercentageSettings(_ settings: BatteryPercentageSettings) async throws -> BatteryPercentageSettings
 }
 
 extension ChargingDaemonManager: ChargingSettingsManaging {}
@@ -33,12 +40,7 @@ struct ChargingSettingsAvailability: Equatable {
   let heatProtection: Bool
   let magSafeLED: Bool
 
-  /// An unresolved capability set means the daemon has not returned its
-  /// first snapshot yet. The UI must still allow starting/installing the
-  /// daemon so it can perform capability probing.
-  var canAttemptManagement: Bool {
-    !isResolved || management
-  }
+  var canAttemptManagement: Bool { !isResolved || management }
 
   init(capabilities: DaemonCapabilities?) {
     isResolved = capabilities != nil
@@ -54,28 +56,31 @@ struct ChargingSettingsAvailability: Equatable {
 @MainActor
 @Observable
 final class ChargingSettingsModel {
-  private struct PendingSave {
-    let settings: DaemonSettings
-    let appliesOptimistically: Bool
-  }
-
   private let client: any ChargingSettingsManaging
   private let sliderDebounce: Duration
-  private var confirmedSettings: DaemonSettings
-  private var pendingSave: PendingSave?
-  private var saveTask: Task<Void, Never>?
-  private var debounceTask: Task<Void, Never>?
+  private var thresholdDebounceTask: Task<Void, Never>?
+  private var heatDebounceTask: Task<Void, Never>?
+  private var saveTasks: [String: Task<Void, Never>] = [:]
   private var isStopped = false
 
-  private(set) var settings: DaemonSettings
+  private(set) var management: ChargingManagementSettings?
+  private(set) var threshold: ChargingThresholdSettings?
+  private(set) var automaticDischarge: AutomaticDischargeSettings?
+  private(set) var sleepPrevention: SleepPreventionSettings?
+  private(set) var heatProtection: HeatProtectionSettings?
+  private(set) var magSafeLED: MagSafeLEDSettings?
+  private(set) var batteryPercentage: BatteryPercentageSettings?
   private(set) var capabilities: DaemonCapabilities?
-  private(set) var isLoaded = false
-  private(set) var isSaving = false
   private(set) var errorMessage: String?
 
-  var availability: ChargingSettingsAvailability {
-    ChargingSettingsAvailability(capabilities: capabilities)
+  var isLoaded: Bool {
+    management != nil && threshold != nil && automaticDischarge != nil
+      && sleepPrevention != nil && heatProtection != nil && magSafeLED != nil
+      && batteryPercentage != nil
   }
+
+  var isSaving: Bool { !saveTasks.isEmpty }
+  var availability: ChargingSettingsAvailability { .init(capabilities: capabilities) }
 
   init(
     client: any ChargingSettingsManaging = ChargingDaemonManager.shared,
@@ -83,87 +88,114 @@ final class ChargingSettingsModel {
   ) {
     self.client = client
     self.sliderDebounce = sliderDebounce
-    let initial = client.daemonSettingsState?.settings ?? DaemonSettings()
-    settings = initial
-    confirmedSettings = initial
-    receiveDaemonState()
-    observeDaemonState()
+    synchronizeFromManager()
+    observeManagerStateChanges()
   }
 
   static func preview(managementEnabled: Bool) -> ChargingSettingsModel {
-    var settings = DaemonSettings()
-    settings.managementEnabled = managementEnabled
-    return ChargingSettingsModel(
-      client: ChargingSettingsPreviewClient(settings: settings)
-    )
+    ChargingSettingsModel(client: ChargingSettingsPreviewClient(managementEnabled: managementEnabled))
   }
 
-  func set<Value: Equatable & Sendable>(
-    _ keyPath: WritableKeyPath<DaemonSettings, Value>,
-    to value: Value,
-    debounced: Bool = false
-  ) {
-    guard settings[keyPath: keyPath] != value else { return }
-    var updated = settings
-    updated[keyPath: keyPath] = value
-    settings = updated
-    errorMessage = nil
-
-    if debounced {
-      scheduleDebouncedSave()
-    } else {
-      debounceTask?.cancel()
-      debounceTask = nil
-      enqueueSave(updated, appliesOptimistically: true)
-    }
-  }
-
-  /// Management transitions are pessimistic: the toggle changes only after
-  /// the daemon has persisted settings and reconciled/reset hardware.
   func setManagementEnabled(_ enabled: Bool) {
-    guard settings.managementEnabled != enabled else { return }
-    var updated = settings
-    updated.managementEnabled = enabled
-    errorMessage = nil
-    debounceTask?.cancel()
-    debounceTask = nil
-    enqueueSave(updated, appliesOptimistically: false)
+    guard let confirmed = management, confirmed.isEnabled != enabled else { return }
+    enqueueGroupSave("management", optimistic: nil, rollback: { self.management = confirmed }) {
+      self.management = try await self.client.setChargingManagementSettings(.init(isEnabled: enabled))
+    }
   }
 
-  func clearError() {
+  func updateChargingThreshold(
+    debounced: Bool = false,
+    _ update: (inout ChargingThresholdSettings) -> Void
+  ) {
+    guard let confirmed = threshold else { return }
+    var draft = confirmed
+    update(&draft)
+    guard draft != confirmed else { return }
+    threshold = draft
     errorMessage = nil
+    if debounced {
+      thresholdDebounceTask?.cancel()
+      thresholdDebounceTask = Task { [weak self, sliderDebounce] in
+        try? await Task.sleep(for: sliderDebounce)
+        guard !Task.isCancelled else { return }
+        self?.saveChargingThreshold(draft, rollback: confirmed)
+      }
+    } else {
+      thresholdDebounceTask?.cancel()
+      saveChargingThreshold(draft, rollback: confirmed)
+    }
   }
 
-  /// Persists management as disabled before the daemon is removed so a later
-  /// reinstall cannot unexpectedly resume the previous charging policy.
+  func setAutomaticDischargeEnabled(_ enabled: Bool) {
+    guard let confirmed = automaticDischarge, confirmed.isEnabled != enabled else { return }
+    let draft = AutomaticDischargeSettings(isEnabled: enabled)
+    enqueueGroupSave("discharge", optimistic: { self.automaticDischarge = draft }, rollback: { self.automaticDischarge = confirmed }) {
+      self.automaticDischarge = try await self.client.setAutomaticDischargeSettings(draft)
+    }
+  }
+
+  func setSleepPreventionEnabled(_ enabled: Bool) {
+    guard let confirmed = sleepPrevention, confirmed.isEnabled != enabled else { return }
+    let draft = SleepPreventionSettings(isEnabled: enabled)
+    enqueueGroupSave("sleep", optimistic: { self.sleepPrevention = draft }, rollback: { self.sleepPrevention = confirmed }) {
+      self.sleepPrevention = try await self.client.setSleepPreventionSettings(draft)
+    }
+  }
+
+  func updateHeatProtection(
+    debounced: Bool = false,
+    _ update: (inout HeatProtectionSettings) -> Void
+  ) {
+    guard let confirmed = heatProtection else { return }
+    var draft = confirmed
+    update(&draft)
+    guard draft != confirmed else { return }
+    heatProtection = draft
+    errorMessage = nil
+    if debounced {
+      heatDebounceTask?.cancel()
+      heatDebounceTask = Task { [weak self, sliderDebounce] in
+        try? await Task.sleep(for: sliderDebounce)
+        guard !Task.isCancelled else { return }
+        self?.saveHeatProtection(draft, rollback: confirmed)
+      }
+    } else {
+      heatDebounceTask?.cancel()
+      saveHeatProtection(draft, rollback: confirmed)
+    }
+  }
+
+  func updateMagSafeLED(_ update: (inout MagSafeLEDSettings) -> Void) {
+    guard let confirmed = magSafeLED else { return }
+    var draft = confirmed
+    update(&draft)
+    guard draft != confirmed else { return }
+    enqueueGroupSave("magsafe", optimistic: { self.magSafeLED = draft }, rollback: { self.magSafeLED = confirmed }) {
+      self.magSafeLED = try await self.client.setMagSafeLEDSettings(draft)
+    }
+  }
+
+  func setUseHardwarePercentage(_ enabled: Bool) {
+    guard let confirmed = batteryPercentage, confirmed.useHardwarePercentage != enabled else { return }
+    let draft = BatteryPercentageSettings(useHardwarePercentage: enabled)
+    enqueueGroupSave("percentage", optimistic: { self.batteryPercentage = draft }, rollback: { self.batteryPercentage = confirmed }) {
+      self.batteryPercentage = try await self.client.setBatteryPercentageSettings(draft)
+    }
+  }
+
+  func clearError() { errorMessage = nil }
+
   func disableManagementForDaemonUninstall() async throws {
-    guard saveTask == nil, !isSaving else {
-      throw ChargingSettingsOperationError.saveInProgress
-    }
-
-    let hasPendingDebouncedSave = debounceTask != nil
-    debounceTask?.cancel()
-    debounceTask = nil
-    pendingSave = nil
-
-    guard settings.managementEnabled || hasPendingDebouncedSave else {
-      errorMessage = nil
-      return
-    }
-
-    var updated = settings
-    updated.managementEnabled = false
-    isSaving = true
-    defer { isSaving = false }
-
+    guard saveTasks.isEmpty else { throw ChargingSettingsOperationError.saveInProgress }
+    thresholdDebounceTask?.cancel()
+    heatDebounceTask?.cancel()
+    guard management?.isEnabled == true else { return }
+    let confirmed = management
     do {
-      let state = try await client.synchronizeChargingSettings(updated)
-      confirmedSettings = state.settings
-      settings = state.settings
-      isLoaded = true
+      management = try await client.setChargingManagementSettings(.init(isEnabled: false))
       errorMessage = nil
     } catch {
-      settings = confirmedSettings
+      management = confirmed
       errorMessage = error.localizedDescription
       throw error
     }
@@ -171,114 +203,100 @@ final class ChargingSettingsModel {
 
   func stop() {
     isStopped = true
-    debounceTask?.cancel()
-    debounceTask = nil
-    saveTask?.cancel()
-    saveTask = nil
-    pendingSave = nil
+    thresholdDebounceTask?.cancel()
+    heatDebounceTask?.cancel()
+    saveTasks.values.forEach { $0.cancel() }
+    saveTasks.removeAll()
   }
 
-  private func scheduleDebouncedSave() {
-    debounceTask?.cancel()
-    debounceTask = Task { [weak self, sliderDebounce] in
-      try? await Task.sleep(for: sliderDebounce)
-      guard !Task.isCancelled, let self else { return }
-      self.debounceTask = nil
-      self.enqueueSave(self.settings, appliesOptimistically: true)
+  private func saveChargingThreshold(_ draft: ChargingThresholdSettings, rollback: ChargingThresholdSettings) {
+    enqueueGroupSave("threshold", optimistic: nil, rollback: { self.threshold = rollback }) {
+      self.threshold = try await self.client.setChargingThresholdSettings(draft)
     }
   }
 
-  private func enqueueSave(
-    _ settings: DaemonSettings,
-    appliesOptimistically: Bool
+  private func saveHeatProtection(_ draft: HeatProtectionSettings, rollback: HeatProtectionSettings) {
+    enqueueGroupSave("heat", optimistic: nil, rollback: { self.heatProtection = rollback }) {
+      self.heatProtection = try await self.client.setHeatProtectionSettings(draft)
+    }
+  }
+
+  private func enqueueGroupSave(
+    _ key: String,
+    optimistic: (() -> Void)?,
+    rollback: @escaping () -> Void,
+    operation: @escaping () async throws -> Void
   ) {
-    pendingSave = PendingSave(
-      settings: settings,
-      appliesOptimistically: appliesOptimistically
-    )
-    guard saveTask == nil else { return }
-    saveTask = Task { [weak self] in
-      await self?.runSaveLoop()
-    }
-  }
-
-  private func runSaveLoop() async {
-    isSaving = true
-    while let request = pendingSave, !Task.isCancelled {
-      pendingSave = nil
+    optimistic?()
+    errorMessage = nil
+    saveTasks[key]?.cancel()
+    saveTasks[key] = Task { [weak self] in
+      guard let self else { return }
       do {
-        let state = try await client.synchronizeChargingSettings(request.settings)
-        confirmedSettings = state.settings
-        isLoaded = true
-        if pendingSave == nil, debounceTask == nil {
-          settings = state.settings
-        } else if !request.appliesOptimistically {
-          // A later edit is already queued; keep that newer draft visible.
-          settings = pendingSave?.settings ?? settings
-        }
-        errorMessage = nil
+        try await operation()
+      } catch is CancellationError {
+        return
       } catch {
-        pendingSave = nil
-        debounceTask?.cancel()
-        debounceTask = nil
-        settings = confirmedSettings
-        errorMessage = error.localizedDescription
-        break
+        rollback()
+        self.errorMessage = error.localizedDescription
       }
+      self.saveTasks[key] = nil
     }
-    isSaving = false
-    saveTask = nil
   }
 
-  private func observeDaemonState() {
+  private func observeManagerStateChanges() {
     guard !isStopped else { return }
     withObservationTracking {
-      _ = client.daemonSettingsState
+      _ = client.chargingManagementSettings
+      _ = client.chargingThresholdSettings
+      _ = client.automaticDischargeSettings
+      _ = client.sleepPreventionSettings
+      _ = client.heatProtectionSettings
+      _ = client.magSafeLEDSettings
+      _ = client.batteryPercentageSettings
       _ = client.daemonSnapshot
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self, !self.isStopped else { return }
-        self.receiveDaemonState()
-        self.observeDaemonState()
+        self.synchronizeFromManager()
+        self.observeManagerStateChanges()
       }
     }
   }
 
-  private func receiveDaemonState() {
+  private func synchronizeFromManager() {
     capabilities = client.daemonSnapshot?.capabilities
-    guard let state = client.daemonSettingsState else { return }
-    confirmedSettings = state.settings
-    isLoaded = true
-    if saveTask == nil, pendingSave == nil, debounceTask == nil {
-      settings = state.settings
-      errorMessage = nil
-    }
+    if saveTasks["management"] == nil { management = client.chargingManagementSettings }
+    if saveTasks["threshold"] == nil, thresholdDebounceTask == nil { threshold = client.chargingThresholdSettings }
+    if saveTasks["discharge"] == nil { automaticDischarge = client.automaticDischargeSettings }
+    if saveTasks["sleep"] == nil { sleepPrevention = client.sleepPreventionSettings }
+    if saveTasks["heat"] == nil, heatDebounceTask == nil { heatProtection = client.heatProtectionSettings }
+    if saveTasks["magsafe"] == nil { magSafeLED = client.magSafeLEDSettings }
+    if saveTasks["percentage"] == nil { batteryPercentage = client.batteryPercentageSettings }
   }
 }
 
 @MainActor
 @Observable
 private final class ChargingSettingsPreviewClient: ChargingSettingsManaging {
-  var daemonSettingsState: DaemonSettingsState?
+  var chargingManagementSettings: ChargingManagementSettings?
+  var chargingThresholdSettings: ChargingThresholdSettings? = .init()
+  var automaticDischargeSettings: AutomaticDischargeSettings? = .init()
+  var sleepPreventionSettings: SleepPreventionSettings? = .init()
+  var heatProtectionSettings: HeatProtectionSettings? = .init()
+  var magSafeLEDSettings: MagSafeLEDSettings? = .init()
+  var batteryPercentageSettings: BatteryPercentageSettings? = .init()
   var daemonSnapshot: DaemonSnapshot?
 
-  init(settings: DaemonSettings) {
-    daemonSettingsState = DaemonSettingsState(
-      settings: settings,
-      revision: 0,
-      needsLegacyImport: false
-    )
+  init(managementEnabled: Bool) {
+    chargingManagementSettings = .init(isEnabled: managementEnabled)
   }
 
-  func synchronizeChargingSettings(
-    _ settings: DaemonSettings
-  ) async throws -> DaemonSettingsState {
-    let state = DaemonSettingsState(
-      settings: settings,
-      revision: (daemonSettingsState?.revision ?? 0) + 1,
-      needsLegacyImport: false
-    )
-    daemonSettingsState = state
-    return state
-  }
+  func setChargingManagementSettings(_ value: ChargingManagementSettings) async throws -> ChargingManagementSettings { chargingManagementSettings = value; return value }
+  func setChargingThresholdSettings(_ value: ChargingThresholdSettings) async throws -> ChargingThresholdSettings { chargingThresholdSettings = value; return value }
+  func setAutomaticDischargeSettings(_ value: AutomaticDischargeSettings) async throws -> AutomaticDischargeSettings { automaticDischargeSettings = value; return value }
+  func setSleepPreventionSettings(_ value: SleepPreventionSettings) async throws -> SleepPreventionSettings { sleepPreventionSettings = value; return value }
+  func setHeatProtectionSettings(_ value: HeatProtectionSettings) async throws -> HeatProtectionSettings { heatProtectionSettings = value; return value }
+  func setMagSafeLEDSettings(_ value: MagSafeLEDSettings) async throws -> MagSafeLEDSettings { magSafeLEDSettings = value; return value }
+  func setBatteryPercentageSettings(_ value: BatteryPercentageSettings) async throws -> BatteryPercentageSettings { batteryPercentageSettings = value; return value }
 }

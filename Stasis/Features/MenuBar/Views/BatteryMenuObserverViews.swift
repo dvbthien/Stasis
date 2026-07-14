@@ -1,4 +1,3 @@
-import Defaults
 import SwiftUI
 
 /// Reads `BatteryService.metrics`/`.adapterMetrics` and the
@@ -8,8 +7,7 @@ struct BatteryMainInfoView: View {
     @State private var daemonManager = ChargingDaemonManager.shared
 
     private var useHardwarePercentage: Bool {
-        daemonManager.daemonSettingsState?.settings.useHardwarePercentage
-            ?? Defaults[.useHardwarePercentage]
+        daemonManager.batteryPercentageSettings?.useHardwarePercentage ?? false
     }
 
     var body: some View {
@@ -29,8 +27,7 @@ struct BatteryAdditionalInfoObserverView: View {
     @State private var daemonManager = ChargingDaemonManager.shared
 
     private var useHardwarePercentage: Bool {
-        daemonManager.daemonSettingsState?.settings.useHardwarePercentage
-            ?? Defaults[.useHardwarePercentage]
+        daemonManager.batteryPercentageSettings?.useHardwarePercentage ?? false
     }
 
     var body: some View {
@@ -56,8 +53,7 @@ struct PowerSankeyViewWrapper: View {
     @State private var daemonManager = ChargingDaemonManager.shared
 
     private var useHardwarePercentage: Bool {
-        daemonManager.daemonSettingsState?.settings.useHardwarePercentage
-            ?? Defaults[.useHardwarePercentage]
+        daemonManager.batteryPercentageSettings?.useHardwarePercentage ?? false
     }
 
     var body: some View {

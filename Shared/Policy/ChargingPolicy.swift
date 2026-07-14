@@ -1,7 +1,7 @@
 import Foundation
 
 /// Plain policy input. It deliberately has no dependency on app defaults.
-struct ChargingSettingsSnapshot: Equatable, Sendable {
+struct ChargingPolicyInput: Equatable, Sendable {
     let chargeLimit: Int
     let useHardwarePercentage: Bool
     let sailingModeEnabled: Bool
@@ -13,19 +13,25 @@ struct ChargingSettingsSnapshot: Equatable, Sendable {
     let heatProtectionMagSafeLEDState: MagSafeLEDState
     let disableSleepUntilChargeLimit: Bool
 
-    init(settings: DaemonSettings, chargeLimitOverrideActive: Bool) {
-        chargeLimit = chargeLimitOverrideActive ? 100 : settings.chargeLimit
-        useHardwarePercentage = settings.useHardwarePercentage
-        sailingModeEnabled = settings.sailingModeEnabled
-        sailingModeLimit = settings.sailingDelta
-        automaticDischarge = settings.automaticDischarge
-        manageMagSafeLED = settings.manageMagSafeLED
-        heatProtectionEnabled = settings.heatProtectionEnabled
-        heatProtectionLimit = settings.heatProtectionLimit
-        heatProtectionMagSafeLEDState =
-            MagSafeLEDState(rawValue: settings.heatProtectionLEDStateRawValue)
-            ?? .blinkOrangeSlow
-        disableSleepUntilChargeLimit = settings.preventSleepUntilLimit
+    init(
+        threshold: ChargingThresholdSettings,
+        automaticDischarge: AutomaticDischargeSettings,
+        sleepPrevention: SleepPreventionSettings,
+        heatProtection: HeatProtectionSettings,
+        magSafeLED: MagSafeLEDSettings,
+        batteryPercentage: BatteryPercentageSettings,
+        chargeLimitOverrideActive: Bool
+    ) {
+        chargeLimit = chargeLimitOverrideActive ? 100 : threshold.chargeLimit
+        useHardwarePercentage = batteryPercentage.useHardwarePercentage
+        sailingModeEnabled = threshold.sailingModeEnabled
+        sailingModeLimit = threshold.sailingDelta
+        self.automaticDischarge = automaticDischarge.isEnabled
+        manageMagSafeLED = magSafeLED.isEnabled
+        heatProtectionEnabled = heatProtection.isEnabled
+        heatProtectionLimit = heatProtection.temperatureLimit
+        heatProtectionMagSafeLEDState = magSafeLED.heatProtectionState
+        disableSleepUntilChargeLimit = sleepPrevention.isEnabled
     }
 
     func batteryPercentage(for controlState: BatteryControlState) -> Int {
@@ -51,7 +57,7 @@ enum ChargeLimitPolicy {
 
     static func evaluate(
         controlState: BatteryControlState,
-        settings: ChargingSettingsSnapshot,
+        settings: ChargingPolicyInput,
         stateWasCleared: Bool,
         hasReachedChargeLimit: inout Bool
     ) -> ChargingDecision {
@@ -93,7 +99,7 @@ enum ChargeLimitPolicy {
     private static func primeHysteresisIfNeeded(
         stateWasCleared: Bool,
         batteryPercentage: Int,
-        settings: ChargingSettingsSnapshot,
+        settings: ChargingPolicyInput,
         hasReachedChargeLimit: inout Bool
     ) {
         guard stateWasCleared, settings.sailingModeEnabled else { return }
@@ -104,7 +110,7 @@ enum ChargeLimitPolicy {
 
     private static func decisionAtOrAboveLimit(
         isAboveLimit: Bool,
-        settings: ChargingSettingsSnapshot
+        settings: ChargingPolicyInput
     ) -> ChargingDecision {
         ChargingDecision(
             desiredCharging: false,
@@ -118,7 +124,7 @@ enum ChargeLimitPolicy {
 
     private static func sailingModeDecision(
         batteryPercentage: Int,
-        settings: ChargingSettingsSnapshot,
+        settings: ChargingPolicyInput,
         hasReachedChargeLimit: inout Bool
     ) -> ChargingDecision {
         let threshold = settings.chargeLimit - settings.sailingModeLimit
@@ -146,7 +152,7 @@ enum ChargeLimitPolicy {
     }
 
     private static func chargingTowardLimitDecision(
-        settings: ChargingSettingsSnapshot,
+        settings: ChargingPolicyInput,
         reason: String
     ) -> ChargingDecision {
         ChargingDecision(
@@ -162,7 +168,7 @@ enum HeatProtectionPolicy {
     static func apply(
         to decision: inout ChargingDecision,
         controlState: BatteryControlState,
-        settings: ChargingSettingsSnapshot
+        settings: ChargingPolicyInput
     ) {
         guard settings.heatProtectionEnabled,
               controlState.batteryTemperature > Double(settings.heatProtectionLimit)

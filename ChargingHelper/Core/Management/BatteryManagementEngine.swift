@@ -10,7 +10,7 @@ struct DaemonManagementContext: Sendable {
 actor BatteryManagementEngine {
     private let mode: ChargeControlMode
     private let capabilities: DaemonCapabilities
-    private let settingsStore: DaemonSettingsStore
+    private let settingsStore: ChargingSettingsStore
     private let stateStore: DaemonStateStore
     private let hardware: any DaemonHardwareControlling
     private let sleepAssertion: any DaemonSleepAssertionControlling
@@ -32,7 +32,7 @@ actor BatteryManagementEngine {
 
     init(
         capabilities: DaemonCapabilities,
-        settingsStore: DaemonSettingsStore,
+        settingsStore: ChargingSettingsStore,
         stateStore: DaemonStateStore,
         hardware: any DaemonHardwareControlling,
         sleepAssertion: any DaemonSleepAssertionControlling = DaemonSleepAssertionController(),
@@ -94,14 +94,13 @@ actor BatteryManagementEngine {
     }
 
     private func reconcile(events: Set<DaemonPolicyEvent>) async -> DaemonPolicyReconcileResult {
-        let settingsState = await settingsStore.state()
-        let settings = settingsState.settings
+        let management = await settingsStore.chargingManagementSettings()
         var context = await stateStore.managementContext()
         let stateWasCleared =
             previousAdapterConnected != context.controlState.adapterConnected
             || previousManagementEnabled != true
         previousAdapterConnected = context.controlState.adapterConnected
-        previousManagementEnabled = settings.managementEnabled
+        previousManagementEnabled = management.isEnabled
         var powerPathChanged = false
 
         do {
@@ -113,12 +112,12 @@ actor BatteryManagementEngine {
                 powerPathChanged = try await restoreHardwareDefaults(
                     reason: "Daemon prepared for uninstall"
                 )
-            } else if !settings.managementEnabled || !context.controlState.adapterConnected {
+            } else if !management.isEnabled || !context.controlState.adapterConnected {
                 await stateStore.clearTemporaryPolicyState()
                 context = await stateStore.managementContext()
                 hasReachedChargeLimit = false
                 powerPathChanged = try await applySystemDefaults(
-                    reason: settings.managementEnabled
+                    reason: management.isEnabled
                         ? "Power adapter is disconnected"
                         : "Battery management is disabled"
                 )
@@ -126,15 +125,11 @@ actor BatteryManagementEngine {
                 switch mode {
                 case .legacy:
                     powerPathChanged = try await reconcileLegacy(
-                        settings: settings,
                         context: context,
                         stateWasCleared: stateWasCleared
                     )
                 case .firmware:
-                    powerPathChanged = try await reconcileFirmware(
-                        settings: settings,
-                        context: context
-                    )
+                    powerPathChanged = try await reconcileFirmware(context: context)
                 case .unsupported:
                     await stateStore.updatePolicyDecision(
                         desiredCharging: nil,
@@ -174,12 +169,10 @@ actor BatteryManagementEngine {
     }
 
     private func reconcileLegacy(
-        settings: DaemonSettings,
         context: DaemonManagementContext,
         stateWasCleared: Bool
     ) async throws -> Bool {
-        let policySettings = ChargingSettingsSnapshot(
-            settings: settings,
+        let policySettings = await settingsStore.makePolicyInput(
             chargeLimitOverrideActive: context.chargeLimitOverrideActive
         )
         var decision = ChargeLimitPolicy.evaluate(
@@ -229,9 +222,9 @@ actor BatteryManagementEngine {
     }
 
     private func reconcileFirmware(
-        settings: DaemonSettings,
         context: DaemonManagementContext
     ) async throws -> Bool {
+        let settings = await settingsStore.chargingThresholdSettings()
         var powerPathChanged = false
         if context.forceDischargeActive {
             powerPathChanged =

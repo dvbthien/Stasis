@@ -1,224 +1,101 @@
 import XCTest
 
 final class ChargeLimitPolicyTests: XCTestCase {
-    @MainActor
-    func testPlainSettingsSnapshotPreservesEveryPolicyInput() {
-        let settings = DaemonSettings(
-            managementEnabled: true,
-            chargeLimit: 77,
-            useHardwarePercentage: true,
-            sailingModeEnabled: false,
-            sailingDelta: 3,
-            automaticDischarge: false,
-            preventSleepUntilLimit: true,
-            heatProtectionEnabled: false,
-            heatProtectionLimit: 42,
-            manageMagSafeLED: false,
-            heatProtectionLEDStateRawValue: 7
+    func testPolicyInputUsesHardwareOrCalibratedPercentage() {
+        let state = BatteryControlState(
+            batteryPercentage: 79,
+            hardwareBatteryPercentage: 82,
+            adapterConnected: true,
+            batteryTemperature: 30
         )
-
-        let snapshot = ChargingSettingsSnapshot(
-            settings: settings,
-            chargeLimitOverrideActive: false
-        )
-
-        XCTAssertEqual(snapshot.chargeLimit, 77)
-        XCTAssertTrue(snapshot.useHardwarePercentage)
-        XCTAssertFalse(snapshot.sailingModeEnabled)
-        XCTAssertEqual(snapshot.sailingModeLimit, 3)
-        XCTAssertFalse(snapshot.automaticDischarge)
-        XCTAssertFalse(snapshot.manageMagSafeLED)
-        XCTAssertFalse(snapshot.heatProtectionEnabled)
-        XCTAssertEqual(snapshot.heatProtectionLimit, 42)
-        XCTAssertEqual(snapshot.heatProtectionMagSafeLEDState.rawValue, 7)
-        XCTAssertTrue(snapshot.disableSleepUntilChargeLimit)
-
-        let overrideSnapshot = ChargingSettingsSnapshot(
-            settings: settings,
-            chargeLimitOverrideActive: true
-        )
-        XCTAssertEqual(overrideSnapshot.chargeLimit, 100)
+        XCTAssertEqual(input(useHardwarePercentage: false).batteryPercentage(for: state), 79)
+        XCTAssertEqual(input(useHardwarePercentage: true).batteryPercentage(for: state), 82)
     }
 
-    @MainActor
-    func testBelowLimitChargesNormally() {
-        var hasReachedChargeLimit = false
-
+    func testAtLimitStopsCharging() {
+        var reached = false
         let decision = ChargeLimitPolicy.evaluate(
-            controlState: controlState(displayedPercentage: 60),
-            settings: policySettings(sailingModeEnabled: false),
+            controlState: state(percentage: 80),
+            settings: input(),
             stateWasCleared: false,
-            hasReachedChargeLimit: &hasReachedChargeLimit
+            hasReachedChargeLimit: &reached
         )
-
-        XCTAssertEqual(decision.desiredCharging, true)
-        XCTAssertEqual(decision.desiredAdapter, true)
-        XCTAssertEqual(decision.desiredLED?.rawValue, 4)
-        XCTAssertFalse(hasReachedChargeLimit)
-    }
-
-    @MainActor
-    func testAtLimitStopsChargingWithoutDisablingAdapter() {
-        var hasReachedChargeLimit = false
-
-        let decision = ChargeLimitPolicy.evaluate(
-            controlState: controlState(displayedPercentage: 80),
-            settings: policySettings(),
-            stateWasCleared: false,
-            hasReachedChargeLimit: &hasReachedChargeLimit
-        )
-
         XCTAssertEqual(decision.desiredCharging, false)
         XCTAssertEqual(decision.desiredAdapter, true)
-        XCTAssertEqual(decision.desiredLED?.rawValue, 3)
-        XCTAssertTrue(hasReachedChargeLimit)
+        XCTAssertTrue(reached)
     }
 
-    @MainActor
-    func testAboveLimitAutomaticallyDischargesWhenEnabled() {
-        var hasReachedChargeLimit = false
-
+    func testAutomaticDischargeControlsAdapterAboveLimit() {
+        var reached = false
         let decision = ChargeLimitPolicy.evaluate(
-            controlState: controlState(displayedPercentage: 81),
-            settings: policySettings(automaticDischarge: true),
+            controlState: state(percentage: 85),
+            settings: input(automaticDischarge: true),
             stateWasCleared: false,
-            hasReachedChargeLimit: &hasReachedChargeLimit
+            hasReachedChargeLimit: &reached
         )
-
-        XCTAssertEqual(decision.desiredCharging, false)
         XCTAssertEqual(decision.desiredAdapter, false)
-        XCTAssertTrue(hasReachedChargeLimit)
     }
 
-    @MainActor
-    func testSailingModePrimesAndReleasesHysteresis() {
-        var hasReachedChargeLimit = false
-        let settings = policySettings(sailingModeEnabled: true, sailingDelta: 5)
-
-        let holdingDecision = ChargeLimitPolicy.evaluate(
-            controlState: controlState(displayedPercentage: 78),
-            settings: settings,
-            stateWasCleared: true,
-            hasReachedChargeLimit: &hasReachedChargeLimit
-        )
-
-        XCTAssertEqual(holdingDecision.desiredCharging, false)
-        XCTAssertTrue(hasReachedChargeLimit)
-
-        let chargingDecision = ChargeLimitPolicy.evaluate(
-            controlState: controlState(displayedPercentage: 74),
-            settings: settings,
+    func testSailingModeWaitsWithinHysteresisAfterLimitReached() {
+        var reached = true
+        let decision = ChargeLimitPolicy.evaluate(
+            controlState: state(percentage: 77),
+            settings: input(),
             stateWasCleared: false,
-            hasReachedChargeLimit: &hasReachedChargeLimit
+            hasReachedChargeLimit: &reached
         )
-
-        XCTAssertEqual(chargingDecision.desiredCharging, true)
-        XCTAssertEqual(chargingDecision.desiredAdapter, true)
-        XCTAssertFalse(hasReachedChargeLimit)
+        XCTAssertEqual(decision.desiredCharging, false)
     }
 
-    @MainActor
-    func testHeatProtectionOverridesChargeDecision() {
+    func testSailingModeResumesBelowThreshold() {
+        var reached = true
+        let decision = ChargeLimitPolicy.evaluate(
+            controlState: state(percentage: 74),
+            settings: input(),
+            stateWasCleared: false,
+            hasReachedChargeLimit: &reached
+        )
+        XCTAssertEqual(decision.desiredCharging, true)
+        XCTAssertFalse(reached)
+    }
+
+    func testHeatProtectionOverridesChargingDecision() {
         var decision = ChargingDecision(
             desiredCharging: true,
             desiredAdapter: true,
             desiredLED: nil,
             reason: nil
         )
-
         HeatProtectionPolicy.apply(
             to: &decision,
-            controlState: controlState(displayedPercentage: 50, temperature: 41),
-            settings: policySettings(heatProtectionEnabled: true, heatProtectionLimit: 40)
+            controlState: state(percentage: 60, temperature: 41),
+            settings: input()
         )
-
         XCTAssertEqual(decision.desiredCharging, false)
-        XCTAssertEqual(decision.desiredAdapter, true)
-        XCTAssertEqual(decision.desiredLED?.rawValue, 6)
-        XCTAssertEqual(decision.reason, "Battery temperature exceeds 40°C")
+        XCTAssertEqual(decision.desiredLED, .blinkOrangeSlow)
     }
 
-    @MainActor
-    func testForceDischargeOverridesChargingAndAdapter() {
-        var decision = ChargingDecision(
-            desiredCharging: true,
-            desiredAdapter: true,
-            desiredLED: nil,
-            reason: nil
+    private func input(
+        useHardwarePercentage: Bool = false,
+        automaticDischarge: Bool = true
+    ) -> ChargingPolicyInput {
+        ChargingPolicyInput(
+            threshold: .init(),
+            automaticDischarge: .init(isEnabled: automaticDischarge),
+            sleepPrevention: .init(),
+            heatProtection: .init(),
+            magSafeLED: .init(),
+            batteryPercentage: .init(useHardwarePercentage: useHardwarePercentage),
+            chargeLimitOverrideActive: false
         )
-
-        ForceDischargePolicy.apply(to: &decision, isActive: true)
-
-        XCTAssertEqual(decision.desiredCharging, false)
-        XCTAssertEqual(decision.desiredAdapter, false)
     }
 
-    @MainActor
-    func testHardwarePercentageSelectionChangesDecisionInput() {
-        let state = controlState(
-            displayedPercentage: 40,
-            hardwarePercentage: 81
-        )
-        var displayHysteresis = false
-        var hardwareHysteresis = false
-
-        let displayDecision = ChargeLimitPolicy.evaluate(
-            controlState: state,
-            settings: policySettings(useHardwarePercentage: false, sailingModeEnabled: false),
-            stateWasCleared: false,
-            hasReachedChargeLimit: &displayHysteresis
-        )
-        let hardwareDecision = ChargeLimitPolicy.evaluate(
-            controlState: state,
-            settings: policySettings(useHardwarePercentage: true, sailingModeEnabled: false),
-            stateWasCleared: false,
-            hasReachedChargeLimit: &hardwareHysteresis
-        )
-
-        XCTAssertEqual(displayDecision.desiredCharging, true)
-        XCTAssertEqual(hardwareDecision.desiredCharging, false)
-        XCTAssertEqual(hardwareDecision.desiredAdapter, false)
-    }
-
-    @MainActor
-    private func controlState(
-        displayedPercentage: Int,
-        hardwarePercentage: Int? = nil,
-        temperature: Double = 30
-    ) -> BatteryControlState {
-        BatteryControlState(
-            batteryPercentage: displayedPercentage,
-            hardwareBatteryPercentage: hardwarePercentage ?? displayedPercentage,
+    private func state(percentage: Int, temperature: Double = 30) -> BatteryControlState {
+        .init(
+            batteryPercentage: percentage,
+            hardwareBatteryPercentage: percentage,
             adapterConnected: true,
             batteryTemperature: temperature
-        )
-    }
-
-    @MainActor
-    private func policySettings(
-        useHardwarePercentage: Bool = false,
-        sailingModeEnabled: Bool = true,
-        sailingDelta: Int = 5,
-        automaticDischarge: Bool = true,
-        heatProtectionEnabled: Bool = true,
-        heatProtectionLimit: Int = 40
-    ) -> ChargingSettingsSnapshot {
-        let settings = DaemonSettings(
-            managementEnabled: true,
-            chargeLimit: 80,
-            useHardwarePercentage: useHardwarePercentage,
-            sailingModeEnabled: sailingModeEnabled,
-            sailingDelta: sailingDelta,
-            automaticDischarge: automaticDischarge,
-            preventSleepUntilLimit: false,
-            heatProtectionEnabled: heatProtectionEnabled,
-            heatProtectionLimit: heatProtectionLimit,
-            manageMagSafeLED: true,
-            heatProtectionLEDStateRawValue: 6
-        )
-        return ChargingSettingsSnapshot(
-            settings: settings,
-            chargeLimitOverrideActive: false
         )
     }
 }

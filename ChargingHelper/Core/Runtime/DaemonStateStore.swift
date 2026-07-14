@@ -107,14 +107,14 @@ actor DaemonStateStore {
         )
     }
 
-    func snapshot(settingsState: DaemonSettingsState) -> DaemonSnapshot {
+    func snapshot(managementEnabled: Bool) -> DaemonSnapshot {
         return DaemonSnapshot(
             capabilities: capabilities,
             battery: battery,
             adapter: adapter,
             hardware: hardwareState,
             policy: DaemonPolicyState(
-                managementEnabled: settingsState.settings.managementEnabled,
+                managementEnabled: managementEnabled,
                 chargeLimitOverrideActive: chargeLimitOverrideActive,
                 forceDischargeActive: forceDischargeActive,
                 desiredCharging: desiredCharging,
@@ -125,7 +125,6 @@ actor DaemonStateStore {
             runtime: DaemonRuntimeState(
                 status: runtimeStatus,
                 daemonVersion: daemonVersion,
-                settingsRevision: settingsState.revision,
                 updatedAt: Date(),
                 lastError: lastError
             )

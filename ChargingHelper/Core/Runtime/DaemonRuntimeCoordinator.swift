@@ -5,7 +5,7 @@ actor DaemonRuntimeCoordinator {
         DaemonPowerSourceUpdateReason
     ) async -> DaemonPowerSourceUpdate?
 
-    private let settingsStore: DaemonSettingsStore
+    private let settingsStore: ChargingSettingsStore
     private let stateStore: DaemonStateStore
     private let hardware: any DaemonHardwareControlling
     private let clients: DaemonClientRegistry
@@ -14,7 +14,7 @@ actor DaemonRuntimeCoordinator {
     private var ioKitRefreshHandler: IOKitRefreshHandler?
 
     init(
-        settingsStore: DaemonSettingsStore,
+        settingsStore: ChargingSettingsStore,
         stateStore: DaemonStateStore,
         hardware: any DaemonHardwareControlling,
         clients: DaemonClientRegistry
@@ -58,8 +58,8 @@ actor DaemonRuntimeCoordinator {
         if refreshHardware {
             await refreshHardwareState()
         }
-        let settingsState = await settingsStore.state()
-        return await stateStore.snapshot(settingsState: settingsState)
+        let management = await settingsStore.chargingManagementSettings()
+        return await stateStore.snapshot(managementEnabled: management.isEnabled)
     }
 
     func publishCurrentSnapshot(refreshHardware: Bool = false) async {

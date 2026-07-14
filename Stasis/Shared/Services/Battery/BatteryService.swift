@@ -32,13 +32,13 @@ class BatteryService {
     logger.info("BatteryService initialized")
     startIOKitMonitoring()
     daemonManager.startStateStreaming()
-    handleDaemonStateChange()
-    observeDaemonState()
+    updateActiveMetricsSource()
+    observeDaemonSnapshotAuthority()
   }
 
   func loadCapabilities() async {
     if let snapshot = authoritativeDaemonSnapshot {
-      applyCapabilities(snapshot.capabilities)
+      updateDeviceCapabilities(from: snapshot.capabilities)
       return
     }
 
@@ -50,7 +50,7 @@ class BatteryService {
     return daemonManager.daemonSnapshot
   }
 
-  private func observeDaemonState() {
+  private func observeDaemonSnapshotAuthority() {
     guard !isStopped else { return }
     withObservationTracking {
       _ = daemonManager.connectionStatus
@@ -59,21 +59,21 @@ class BatteryService {
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self, !self.isStopped else { return }
-        self.handleDaemonStateChange()
-        self.observeDaemonState()
+        self.updateActiveMetricsSource()
+        self.observeDaemonSnapshotAuthority()
       }
     }
   }
 
-  private func handleDaemonStateChange() {
+  private func updateActiveMetricsSource() {
     if let snapshot = authoritativeDaemonSnapshot {
-      applyDaemonSnapshot(snapshot)
+      updateMetrics(from: snapshot)
       stopIOKitMonitoring()
     } else {
       startIOKitMonitoring()
-      applyFallbackSnapshot()
+      updateMetricsFromIOKitFallback()
     }
-    synchronizeTelemetryDemand()
+    updateTelemetryPollingState()
   }
 
   private func startIOKitMonitoring() {
@@ -84,7 +84,7 @@ class BatteryService {
       guard !Task.isCancelled else { return }
       for await (newBatteryMetrics, newAdapterMetrics) in self.ioKitService.metricsStream() {
         guard !Task.isCancelled else { break }
-        self.handleIOKitUpdate(newBatteryMetrics, adapterUpdate: newAdapterMetrics)
+        self.receiveIOKitFallbackMetrics(newBatteryMetrics, adapter: newAdapterMetrics)
       }
     }
   }
@@ -99,21 +99,23 @@ class BatteryService {
 
   func setFastTelemetryEnabled(_ enabled: Bool) {
     telemetryRequested = enabled
-    synchronizeTelemetryDemand()
+    updateTelemetryPollingState()
   }
 
-  private func handleIOKitUpdate(_ newBatteryMetrics: BatteryMetrics, adapterUpdate: AdapterMetrics)
-  {
+  private func receiveIOKitFallbackMetrics(
+    _ newBatteryMetrics: BatteryMetrics,
+    adapter newAdapterMetrics: AdapterMetrics
+  ) {
     logger.debug("Received fallback IOKit update")
     fallbackMetrics = newBatteryMetrics
-    fallbackAdapterMetrics = adapterUpdate
+    fallbackAdapterMetrics = newAdapterMetrics
 
     if authoritativeDaemonSnapshot == nil {
-      applyFallbackSnapshot()
+      updateMetricsFromIOKitFallback()
     }
   }
 
-  private func applyDaemonSnapshot(_ snapshot: DaemonSnapshot) {
+  private func updateMetrics(from snapshot: DaemonSnapshot) {
     let updatedBattery = BatteryMetrics(
       batteryPercentage: snapshot.battery.displayedPercentage,
       hardwareBatteryPercentage: snapshot.battery.hardwarePercentage,
@@ -134,12 +136,12 @@ class BatteryService {
       adapterCurrent: adapterMetrics.adapterCurrent,
       adapterPower: adapterMetrics.adapterPower
     )
-    applyMetrics(updatedBattery, adapter: updatedAdapter)
-    applyCapabilities(snapshot.capabilities)
-    scheduleSMCTelemetryRefresh()
+    commitMetrics(updatedBattery, adapter: updatedAdapter)
+    updateDeviceCapabilities(from: snapshot.capabilities)
+    scheduleDelayedSMCTelemetryRefresh()
   }
 
-  private func applyFallbackSnapshot() {
+  private func updateMetricsFromIOKitFallback() {
     var updatedBattery = fallbackMetrics
     updatedBattery.batteryVoltage = metrics.batteryVoltage
     updatedBattery.batteryCurrent = metrics.batteryCurrent
@@ -150,21 +152,21 @@ class BatteryService {
     updatedAdapter.adapterCurrent = adapterMetrics.adapterCurrent
     updatedAdapter.adapterPower = adapterMetrics.adapterPower
 
-    applyMetrics(updatedBattery, adapter: updatedAdapter)
-    scheduleSMCTelemetryRefresh()
+    commitMetrics(updatedBattery, adapter: updatedAdapter)
+    scheduleDelayedSMCTelemetryRefresh()
   }
 
-  private func applyMetrics(_ updatedBattery: BatteryMetrics, adapter updatedAdapter: AdapterMetrics) {
+  private func commitMetrics(_ updatedBattery: BatteryMetrics, adapter updatedAdapter: AdapterMetrics) {
     if updatedBattery != metrics {
       metrics = updatedBattery
     }
     if updatedAdapter != adapterMetrics {
       adapterMetrics = updatedAdapter
     }
-    updateControlState(from: updatedBattery, adapter: updatedAdapter)
+    updateBatteryObservationState(from: updatedBattery, adapter: updatedAdapter)
   }
 
-  private func applyCapabilities(_ capabilities: DaemonCapabilities) {
+  private func updateDeviceCapabilities(from capabilities: DaemonCapabilities) {
     deviceCapabilities = DeviceCapabilities(
       chargingControl: capabilities.chargingControl,
       adapterControl: capabilities.adapterControl,
@@ -173,7 +175,7 @@ class BatteryService {
     )
   }
 
-  private func synchronizeTelemetryDemand() {
+  private func updateTelemetryPollingState() {
     guard !isStopped else { return }
     if telemetryRequested {
       startSMCTelemetryPolling()
@@ -190,12 +192,12 @@ class BatteryService {
     smcTelemetryTask = Task { [weak self] in
       guard let self else { return }
       while !Task.isCancelled, self.telemetryRequested, !self.isStopped {
-        await self.refreshSMCTelemetryOnce()
+        await self.refreshSMCTelemetry()
         try? await Task.sleep(for: .seconds(1))
       }
       self.smcTelemetryTask = nil
       if self.telemetryRequested, !self.isStopped {
-        self.synchronizeTelemetryDemand()
+        self.updateTelemetryPollingState()
       }
     }
   }
@@ -205,7 +207,7 @@ class BatteryService {
     smcTelemetryTask = nil
   }
 
-  private func scheduleSMCTelemetryRefresh() {
+  private func scheduleDelayedSMCTelemetryRefresh() {
     guard !isStopped, !telemetryRequested else { return }
     smcSingleTelemetryTask?.cancel()
     smcSingleTelemetryTask = Task { [weak self] in
@@ -219,20 +221,20 @@ class BatteryService {
         return
       }
 
-      await self.refreshSMCTelemetryOnce()
+      await self.refreshSMCTelemetry()
       self.smcSingleTelemetryTask = nil
     }
   }
 
-  private func refreshSMCTelemetryOnce() async {
+  private func refreshSMCTelemetry() async {
     do {
-      applySMCTelemetryOverlay(try await smcReader.readAllMetrics())
+      mergeSMCTelemetry(try await smcReader.readAllMetrics())
     } catch {
       logger.error("Could not read SMC telemetry: \(error.localizedDescription)")
     }
   }
 
-  private func applySMCTelemetryOverlay(_ telemetry: SMCTelemetryMetrics) {
+  private func mergeSMCTelemetry(_ telemetry: SMCTelemetryMetrics) {
     var updatedBattery = metrics
     var updatedAdapter = adapterMetrics
 
@@ -244,10 +246,13 @@ class BatteryService {
     updatedAdapter.adapterCurrent = telemetry.adapterCurrent
     updatedAdapter.adapterPower = telemetry.adapterPower
 
-    applyMetrics(updatedBattery, adapter: updatedAdapter)
+    commitMetrics(updatedBattery, adapter: updatedAdapter)
   }
 
-  private func updateControlState(from metrics: BatteryMetrics, adapter: AdapterMetrics) {
+  private func updateBatteryObservationState(
+    from metrics: BatteryMetrics,
+    adapter: AdapterMetrics
+  ) {
     let newState = BatteryControlState(
       batteryPercentage: metrics.batteryPercentage,
       hardwareBatteryPercentage: metrics.hardwareBatteryPercentage,

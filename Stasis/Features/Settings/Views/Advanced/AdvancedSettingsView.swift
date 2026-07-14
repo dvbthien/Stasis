@@ -7,8 +7,8 @@ struct AdvancedSettingsView: View {
 
   private var useHardwarePercentage: Binding<Bool> {
     Binding(
-      get: { chargingSettingsModel.settings.useHardwarePercentage },
-      set: { chargingSettingsModel.set(\.useHardwarePercentage, to: $0) }
+      get: { chargingSettingsModel.batteryPercentage?.useHardwarePercentage ?? false },
+      set: { chargingSettingsModel.setUseHardwarePercentage($0) }
     )
   }
 
@@ -22,7 +22,7 @@ struct AdvancedSettingsView: View {
       Section {
         Toggle("Use hardware percentage", isOn: useHardwarePercentage)
 
-        if chargingSettingsModel.settings.useHardwarePercentage {
+        if chargingSettingsModel.batteryPercentage?.useHardwarePercentage == true {
           SettingsInlineMessage(
             title: Text(
               "Hardware percentage can differ from the calibrated value macOS shows in the battery menu."
@@ -43,18 +43,18 @@ struct AdvancedSettingsView: View {
           message: "Use the raw battery percentage instead of the macOS calibrated value."
         )
       }
+      .disabled(chargingSettingsModel.batteryPercentage == nil || chargingSettingsModel.isSaving)
 
       Section {
-        Toggle("Restart the app when Settings closes", isOn: $restartOnClose)
+        Toggle("Restart Stasis when Settings closes", isOn: $restartOnClose)
       } header: {
         SettingsSectionHeader(
           "Memory Management",
-          message: "Control how Stasis manages memory."
+          message: "Restart Stasis after closing Settings to release memory used by the settings interface."
         )
       }
     }
     .settingsFormLayout()
-    .disabled(chargingSettingsModel.isSaving)
   }
 }
 

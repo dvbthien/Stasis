@@ -1,7 +1,7 @@
 import Foundation
 
 final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unchecked Sendable {
-    private let settingsStore: DaemonSettingsStore
+    private let settingsStore: ChargingSettingsStore
     private let stateStore: DaemonStateStore
     private let runtime: DaemonRuntimeCoordinator
     private let capabilities: DaemonCapabilities
@@ -9,7 +9,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
     private let clients: DaemonClientRegistry
 
     init(
-        settingsStore: DaemonSettingsStore,
+        settingsStore: ChargingSettingsStore,
         stateStore: DaemonStateStore,
         runtime: DaemonRuntimeCoordinator,
         capabilities: DaemonCapabilities,
@@ -35,12 +35,11 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         )
     }
 
-    func connectionInvalidated() {
-    }
+    func connectionInvalidated() {}
 
     func checkHealth(reply: @escaping @Sendable (Data?, String?) -> Void) {
         let status: DaemonRuntimeStatus = capabilities.chargingControl ? .ready : .unsupported
-        respond(reply: reply) { [capabilities, daemonVersion] in
+        sendEncodedResponse(reply: reply) { [capabilities, daemonVersion] in
             DaemonHealth(
                 status: status,
                 daemonVersion: daemonVersion,
@@ -50,39 +49,105 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
     }
 
     func getSnapshot(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        respond(reply: reply) { [runtime] in
-            await runtime.currentSnapshot()
-        }
+        sendEncodedResponse(reply: reply) { [runtime] in await runtime.currentSnapshot() }
     }
 
-    func getSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        respond(reply: reply) { [settingsStore] in
-            await settingsStore.state()
-        }
+    func getChargingManagementSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.chargingManagementSettings() }
     }
 
-    func setSettings(
-        authData _: Data?,
+    func setChargingManagementSettings(
         payload: Data,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        mutateSettings(payload: payload, importLegacy: false, reply: reply)
+        decodePersistAndReconcile(payload, as: ChargingManagementSettings.self, reply: reply) { store, value in
+            await store.setChargingManagementSettings(value)
+        }
     }
 
-    func importLegacySettings(
+    func getChargingThresholdSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.chargingThresholdSettings() }
+    }
+
+    func setChargingThresholdSettings(
         payload: Data,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        mutateSettings(payload: payload, importLegacy: true, reply: reply)
+        decodePersistAndReconcile(payload, as: ChargingThresholdSettings.self, reply: reply) { store, value in
+            try await store.setChargingThresholdSettings(value)
+        }
+    }
+
+    func getAutomaticDischargeSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.automaticDischargeSettings() }
+    }
+
+    func setAutomaticDischargeSettings(
+        payload: Data,
+        reply: @escaping @Sendable (Data?, String?) -> Void
+    ) {
+        decodePersistAndReconcile(payload, as: AutomaticDischargeSettings.self, reply: reply) { store, value in
+            await store.setAutomaticDischargeSettings(value)
+        }
+    }
+
+    func getSleepPreventionSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.sleepPreventionSettings() }
+    }
+
+    func setSleepPreventionSettings(
+        payload: Data,
+        reply: @escaping @Sendable (Data?, String?) -> Void
+    ) {
+        decodePersistAndReconcile(payload, as: SleepPreventionSettings.self, reply: reply) { store, value in
+            await store.setSleepPreventionSettings(value)
+        }
+    }
+
+    func getHeatProtectionSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.heatProtectionSettings() }
+    }
+
+    func setHeatProtectionSettings(
+        payload: Data,
+        reply: @escaping @Sendable (Data?, String?) -> Void
+    ) {
+        decodePersistAndReconcile(payload, as: HeatProtectionSettings.self, reply: reply) { store, value in
+            try await store.setHeatProtectionSettings(value)
+        }
+    }
+
+    func getMagSafeLEDSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.magSafeLEDSettings() }
+    }
+
+    func setMagSafeLEDSettings(
+        payload: Data,
+        reply: @escaping @Sendable (Data?, String?) -> Void
+    ) {
+        decodePersistAndReconcile(payload, as: MagSafeLEDSettings.self, reply: reply) { store, value in
+            await store.setMagSafeLEDSettings(value)
+        }
+    }
+
+    func getBatteryPercentageSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.batteryPercentageSettings() }
+    }
+
+    func setBatteryPercentageSettings(
+        payload: Data,
+        reply: @escaping @Sendable (Data?, String?) -> Void
+    ) {
+        decodePersistAndReconcile(payload, as: BatteryPercentageSettings.self, reply: reply) { store, value in
+            await store.setBatteryPercentageSettings(value)
+        }
     }
 
     func setChargeLimitOverride(
         enabled: Bool,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        respond(reply: reply) { [runtime] in
-            try await runtime.setChargeLimitOverride(enabled)
-        }
+        sendEncodedResponse(reply: reply) { [runtime] in try await runtime.setChargeLimitOverride(enabled) }
     }
 
     func setForceDischarge(
@@ -90,9 +155,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         enabled: Bool,
         reply: @escaping @Sendable (Data?, String?) -> Void
     ) {
-        respond(reply: reply) { [runtime] in
-            try await runtime.setForceDischarge(enabled)
-        }
+        sendEncodedResponse(reply: reply) { [runtime] in try await runtime.setForceDischarge(enabled) }
     }
 
     func prepareForUninstall(
@@ -109,37 +172,28 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         }
     }
 
-    func cancelUninstallPreparation(
-        reply: @escaping @Sendable (Bool) -> Void
-    ) {
+    func cancelUninstallPreparation(reply: @escaping @Sendable (Bool) -> Void) {
         Task { [runtime] in
             await runtime.cancelUninstallPreparation()
             reply(true)
         }
     }
 
-    private func mutateSettings(
-        payload: Data,
-        importLegacy: Bool,
-        reply: @escaping @Sendable (Data?, String?) -> Void
+    private func decodePersistAndReconcile<Value: Codable & Sendable>(
+        _ payload: Data,
+        as type: Value.Type,
+        reply: @escaping @Sendable (Data?, String?) -> Void,
+        setter: @escaping @Sendable (ChargingSettingsStore, Value) async throws -> Value
     ) {
-        respond(reply: reply) { [settingsStore, runtime, clients] in
-            let settings = try DaemonPayloadCodec.decode(DaemonSettings.self, from: payload)
-            let settingsState =
-                if importLegacy {
-                    try await settingsStore.importLegacySettings(settings)
-                } else {
-                    try await settingsStore.setSettings(settings)
-                }
-
-            let settingsPayload = try DaemonPayloadCodec.encode(settingsState)
-            clients.publishSettings(settingsPayload)
+        sendEncodedResponse(reply: reply) { [settingsStore, runtime] in
+            let candidate = try DaemonPayloadCodec.decode(type, from: payload)
+            let canonical = try await setter(settingsStore, candidate)
             await runtime.reconcilePolicyAfterSettingsChange()
-            return settingsState
+            return canonical
         }
     }
 
-    private func respond<Value: Encodable & Sendable>(
+    private func sendEncodedResponse<Value: Encodable & Sendable>(
         reply: @escaping @Sendable (Data?, String?) -> Void,
         operation: @escaping @Sendable () async throws -> Value
     ) {
@@ -154,7 +208,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
 
     private static func errorMessage(for error: Error) -> String {
         switch error {
-        case let error as DaemonSettingsValidationError:
+        case let error as ChargingSettingsValidationError:
             "Invalid settings: \(error)"
         case let error as DecodingError:
             "Invalid payload: \(error.localizedDescription)"

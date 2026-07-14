@@ -56,7 +56,7 @@ class MenuBuilder {
             }
         }
 
-        if ChargingDaemonManager.shared.daemonSettingsState?.settings.managementEnabled == true
+        if ChargingDaemonManager.shared.chargingManagementSettings?.isEnabled == true
             && batteryService.adapterMetrics.adapterConnected
         {
             menu.addItem(NSMenuItem.separator())

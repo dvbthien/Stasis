@@ -57,7 +57,6 @@ enum DaemonRuntimeStatus: String, Codable, Sendable {
 struct DaemonRuntimeState: Codable, Equatable, Sendable {
     var status: DaemonRuntimeStatus = .starting
     var daemonVersion: String = ""
-    var settingsRevision: UInt64 = 0
     var updatedAt: Date = .distantPast
     var lastError: DaemonErrorPayload? = nil
 }

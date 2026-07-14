@@ -1782,7 +1782,14 @@
       }
     },
     "Memory Management" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quản lý bộ nhớ"
+          }
+        }
+      }
     },
     "Menu Bar Icon" : {
       "localizations" : {
@@ -2234,8 +2241,25 @@
     "Removing…" : {
 
     },
-    "Restart the app when Settings closes" : {
-
+    "Restart Stasis after closing Settings to release memory used by the settings interface." : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khởi động lại Stasis sau khi đóng Cài đặt để giải phóng bộ nhớ mà giao diện cài đặt sử dụng."
+          }
+        }
+      }
+    },
+    "Restart Stasis when Settings closes" : {
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Khởi động lại Stasis khi đóng Cài đặt"
+          }
+        }
+      }
     },
     "Retry" : {
 

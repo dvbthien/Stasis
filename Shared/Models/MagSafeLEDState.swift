@@ -1,6 +1,6 @@
 import Foundation
 
-enum MagSafeLEDState: UInt8, Codable, Sendable {
+nonisolated enum MagSafeLEDState: UInt8, Codable, Sendable {
     case reset = 0
     case off = 1
     case green = 3

@@ -16,10 +16,6 @@ final class DaemonClientRegistry: @unchecked Sendable {
         }
     }
 
-    func publishSettings(_ payload: Data) {
-        currentClients().forEach { $0.settingsDidChange(payload) }
-    }
-
     func publishSnapshot(_ payload: Data) {
         currentClients().forEach { $0.stateDidChange(payload) }
     }

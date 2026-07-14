@@ -60,9 +60,8 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
             adapterControl: true,
             magSafeLEDKeyAvailable: true
         )
-        let settingsStore = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: capabilities
+        let settingsStore = ChargingSettingsStore(
+            persistence: InMemoryChargingSettingsPersistence()
         )
         let stateStore = DaemonStateStore(
             capabilities: capabilities,
@@ -77,8 +76,8 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
             )
         )
 
-        let settingsState = await settingsStore.state()
-        let snapshot = await stateStore.snapshot(settingsState: settingsState)
+        let management = await settingsStore.chargingManagementSettings()
+        let snapshot = await stateStore.snapshot(managementEnabled: management.isEnabled)
         XCTAssertTrue(snapshot.battery.isCharging)
     }
 
@@ -171,9 +170,8 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
             adapterControl: true,
             magSafeLEDKeyAvailable: true
         )
-        let settingsStore = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: capabilities
+        let settingsStore = ChargingSettingsStore(
+            persistence: InMemoryChargingSettingsPersistence()
         )
         let stateStore = DaemonStateStore(
             capabilities: capabilities,
@@ -235,7 +233,6 @@ private final class SnapshotCaptureClient: NSObject, ChargingDaemonClientProtoco
         }
     }
 
-    nonisolated func settingsDidChange(_ payload: Data) {}
 
     func latestSnapshot() -> DaemonSnapshot? {
         lock.withLock { snapshots.last }

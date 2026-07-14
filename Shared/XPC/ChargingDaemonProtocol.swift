@@ -8,18 +8,20 @@ import Foundation
 @objc protocol ChargingDaemonProtocol {
     func checkHealth(reply: @escaping @Sendable (Data?, String?) -> Void)
     func getSnapshot(reply: @escaping @Sendable (Data?, String?) -> Void)
-    func getSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
-
-    func setSettings(
-        authData: Data?,
-        payload: Data,
-        reply: @escaping @Sendable (Data?, String?) -> Void
-    )
-
-    func importLegacySettings(
-        payload: Data,
-        reply: @escaping @Sendable (Data?, String?) -> Void
-    )
+    func getChargingManagementSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
+    func setChargingManagementSettings(payload: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+    func getChargingThresholdSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
+    func setChargingThresholdSettings(payload: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+    func getAutomaticDischargeSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
+    func setAutomaticDischargeSettings(payload: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+    func getSleepPreventionSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
+    func setSleepPreventionSettings(payload: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+    func getHeatProtectionSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
+    func setHeatProtectionSettings(payload: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+    func getMagSafeLEDSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
+    func setMagSafeLEDSettings(payload: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
+    func getBatteryPercentageSettings(reply: @escaping @Sendable (Data?, String?) -> Void)
+    func setBatteryPercentageSettings(payload: Data, reply: @escaping @Sendable (Data?, String?) -> Void)
 
     func setChargeLimitOverride(
         enabled: Bool,

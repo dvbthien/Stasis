@@ -1,298 +1,110 @@
 import Foundation
 import XCTest
 
-final class DaemonSettingsStoreTests: XCTestCase {
-    func testUserDefaultsBackendPersistsAcrossStoreRelaunch() async throws {
-        let suiteName = "com.srimanachanta.stasis-daemon-tests.\(UUID().uuidString)"
-        guard let firstDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Could not create isolated daemon settings defaults")
-            return
-        }
-        firstDefaults.removePersistentDomain(forName: suiteName)
-        defer { firstDefaults.removePersistentDomain(forName: suiteName) }
+final class ChargingSettingsStoreTests: XCTestCase {
+    func testDefaults() async {
+        let store = ChargingSettingsStore(persistence: InMemoryChargingSettingsPersistence())
 
-        let firstStore = try DaemonSettingsStore(
-            persistence: UserDefaultsDaemonSettingsPersistence(defaults: firstDefaults),
-            capabilities: legacyCapabilities
-        )
-        let saved = try await firstStore.setSettings(settings(chargeLimit: 72))
-
-        guard let relaunchedDefaults = UserDefaults(suiteName: suiteName) else {
-            XCTFail("Could not reopen isolated daemon settings defaults")
-            return
-        }
-        let relaunchedStore = try DaemonSettingsStore(
-            persistence: UserDefaultsDaemonSettingsPersistence(defaults: relaunchedDefaults),
-            capabilities: legacyCapabilities
-        )
-
-        let reloaded = await relaunchedStore.state()
-        XCTAssertEqual(reloaded, saved)
+        let management = await store.chargingManagementSettings()
+        let threshold = await store.chargingThresholdSettings()
+        let discharge = await store.automaticDischargeSettings()
+        let sleep = await store.sleepPreventionSettings()
+        let heat = await store.heatProtectionSettings()
+        let led = await store.magSafeLEDSettings()
+        let percentage = await store.batteryPercentageSettings()
+        XCTAssertEqual(management, .init(isEnabled: false))
+        XCTAssertEqual(threshold, .init(chargeLimit: 80, sailingModeEnabled: true, sailingDelta: 5))
+        XCTAssertEqual(discharge, .init(isEnabled: true))
+        XCTAssertEqual(sleep, .init(isEnabled: false))
+        XCTAssertEqual(heat, .init(isEnabled: true, temperatureLimit: 40))
+        XCTAssertEqual(led, .init(isEnabled: true, heatProtectionState: .blinkOrangeSlow))
+        XCTAssertEqual(percentage, .init(useHardwarePercentage: false))
     }
 
-    func testSettingsPersistAcrossStoreRelaunch() async throws {
-        let persistence = InMemoryDaemonSettingsPersistence()
-        let firstStore = try DaemonSettingsStore(
-            persistence: persistence,
-            capabilities: legacyCapabilities
-        )
-        let expected = settings(chargeLimit: 75)
+    func testPersistsEachGroupAcrossRestart() async throws {
+        let persistence = InMemoryChargingSettingsPersistence()
+        let store = ChargingSettingsStore(persistence: persistence)
+        _ = await store.setChargingManagementSettings(.init(isEnabled: true))
+        _ = try await store.setChargingThresholdSettings(.init(chargeLimit: 75, sailingModeEnabled: true, sailingDelta: 10))
+        _ = await store.setBatteryPercentageSettings(.init(useHardwarePercentage: true))
 
-        let saved = try await firstStore.setSettings(expected)
-        let relaunchedStore = try DaemonSettingsStore(
-            persistence: persistence,
-            capabilities: legacyCapabilities
-        )
-        let reloaded = await relaunchedStore.state()
-
-        XCTAssertEqual(saved.settings, expected)
-        XCTAssertEqual(reloaded, saved)
-        XCTAssertFalse(reloaded.needsLegacyImport)
+        let relaunched = ChargingSettingsStore(persistence: persistence)
+        let management = await relaunched.chargingManagementSettings()
+        let threshold = await relaunched.chargingThresholdSettings()
+        let percentage = await relaunched.batteryPercentageSettings()
+        XCTAssertTrue(management.isEnabled)
+        XCTAssertEqual(threshold.chargeLimit, 75)
+        XCTAssertTrue(percentage.useHardwarePercentage)
     }
 
-    func testInvalidSettingsDoNotMutateOrPersistPartialState() async throws {
-        let persistence = InMemoryDaemonSettingsPersistence()
-        let store = try DaemonSettingsStore(
-            persistence: persistence,
-            capabilities: legacyCapabilities
-        )
-        let before = await store.state()
-        let persistedBefore = try persistence.load()
-        var invalid = settings(chargeLimit: 80)
-        invalid.chargeLimit = 101
-
+    func testInvalidThresholdIsRejectedWithoutChangingDesiredState() async {
+        let store = ChargingSettingsStore(persistence: InMemoryChargingSettingsPersistence())
         do {
-            _ = try await store.setSettings(invalid)
-            XCTFail("Expected invalid charge limit to be rejected")
+            _ = try await store.setChargingThresholdSettings(
+                .init(chargeLimit: 55, sailingModeEnabled: true, sailingDelta: 10)
+            )
+            XCTFail("Expected invalid threshold")
         } catch {
             XCTAssertEqual(
-                error as? DaemonSettingsValidationError,
-                .chargeLimitOutOfRange(101)
+                error as? ChargingSettingsValidationError,
+                .invalidSailingThreshold(chargeLimit: 55, sailingDelta: 10)
             )
         }
-
-        let after = await store.state()
-        XCTAssertEqual(after, before)
-        XCTAssertEqual(try persistence.load(), persistedBefore)
+        let current = await store.chargingThresholdSettings()
+        XCTAssertEqual(current, .init())
     }
 
-    func testEnabledSailingRejectsResumeThresholdBelowUIRangeWithoutPersisting() async throws {
-        let persistence = InMemoryDaemonSettingsPersistence()
-        let store = try DaemonSettingsStore(
-            persistence: persistence,
-            capabilities: legacyCapabilities
-        )
-        let before = await store.state()
-        let persistedBefore = try persistence.load()
-        var invalid = settings(chargeLimit: 69)
-        invalid.sailingDelta = 20
+    func testCorruptThresholdOnlyResetsThresholdGroup() async throws {
+        let persistence = InMemoryChargingSettingsPersistence()
+        let store = ChargingSettingsStore(persistence: persistence)
+        _ = await store.setChargingManagementSettings(.init(isEnabled: true))
+        _ = await store.setBatteryPercentageSettings(.init(useHardwarePercentage: true))
+        persistence.set(Data("broken".utf8), forKey: "charging.threshold.chargeLimit")
 
-        do {
-            _ = try await store.setSettings(invalid)
-            XCTFail("Expected sailing threshold below 50% to be rejected")
-        } catch {
-            XCTAssertEqual(
-                error as? DaemonSettingsValidationError,
-                .invalidSailingThreshold(chargeLimit: 69, sailingDelta: 20)
-            )
-        }
-
-        let after = await store.state()
-        XCTAssertEqual(after, before)
-        XCTAssertEqual(try persistence.load(), persistedBefore)
+        let relaunched = ChargingSettingsStore(persistence: persistence)
+        let threshold = await relaunched.chargingThresholdSettings()
+        let management = await relaunched.chargingManagementSettings()
+        let percentage = await relaunched.batteryPercentageSettings()
+        XCTAssertEqual(threshold, .init())
+        XCTAssertTrue(management.isEnabled)
+        XCTAssertTrue(percentage.useHardwarePercentage)
     }
 
-    func testEnabledSailingAcceptsResumeThresholdAtUIRangeBoundary() async throws {
-        let store = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: legacyCapabilities
-        )
-        var boundary = settings(chargeLimit: 70)
-        boundary.sailingDelta = 20
+    func testCapabilitiesDoNotRewritePreferences() async {
+        let store = ChargingSettingsStore(persistence: InMemoryChargingSettingsPersistence())
+        _ = await store.setAutomaticDischargeSettings(.init(isEnabled: true))
+        _ = await store.setMagSafeLEDSettings(.init(isEnabled: true, heatProtectionState: .blinkOrangeFast))
 
-        let saved = try await store.setSettings(boundary)
-
-        XCTAssertEqual(saved.settings, boundary)
+        let discharge = await store.automaticDischargeSettings()
+        let led = await store.magSafeLEDSettings()
+        XCTAssertTrue(discharge.isEnabled)
+        XCTAssertTrue(led.isEnabled)
     }
 
-    func testEnabledSailingRejectsZeroDelta() async throws {
-        let store = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: legacyCapabilities
-        )
-        var invalid = settings(chargeLimit: 80)
-        invalid.sailingDelta = 0
+    func testPolicyInputAssemblesGroupsAndPercentageChoice() async throws {
+        let store = ChargingSettingsStore(persistence: InMemoryChargingSettingsPersistence())
+        _ = try await store.setChargingThresholdSettings(.init(chargeLimit: 75, sailingModeEnabled: false, sailingDelta: 5))
+        _ = await store.setAutomaticDischargeSettings(.init(isEnabled: false))
+        _ = await store.setBatteryPercentageSettings(.init(useHardwarePercentage: true))
+        let input = await store.makePolicyInput(chargeLimitOverrideActive: false)
 
-        do {
-            _ = try await store.setSettings(invalid)
-            XCTFail("Expected enabled sailing with equal lower and upper limits to be rejected")
-        } catch {
-            XCTAssertEqual(
-                error as? DaemonSettingsValidationError,
-                .invalidSailingThreshold(chargeLimit: 80, sailingDelta: 0)
-            )
-        }
-    }
-
-    func testDisabledSailingDoesNotApplyResumeThresholdValidation() async throws {
-        let store = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: legacyCapabilities
-        )
-        var candidate = settings(chargeLimit: 50)
-        candidate.sailingModeEnabled = false
-        candidate.sailingDelta = 20
-
-        let saved = try await store.setSettings(candidate)
-
-        XCTAssertEqual(saved.settings, candidate)
-    }
-
-    func testPersistenceFailureKeepsLastConfirmedSettings() async throws {
-        let persistence = InMemoryDaemonSettingsPersistence()
-        let store = try DaemonSettingsStore(
-            persistence: persistence,
-            capabilities: legacyCapabilities
-        )
-        let before = await store.state()
-        persistence.shouldFailSaves = true
-
-        do {
-            _ = try await store.setSettings(settings(chargeLimit: 70))
-            XCTFail("Expected persistence failure")
-        } catch {
-            XCTAssertEqual(error as? TestPersistenceError, .saveFailed)
-        }
-
-        let after = await store.state()
-        XCTAssertEqual(after, before)
-    }
-
-    func testSuccessfulWritesIncrementRevision() async throws {
-        let store = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: legacyCapabilities
-        )
-
-        let first = try await store.setSettings(settings(chargeLimit: 75))
-        let second = try await store.setSettings(settings(chargeLimit: 70))
-
-        XCTAssertEqual(first.revision, 1)
-        XCTAssertEqual(second.revision, 2)
-    }
-
-    func testLegacyImportRunsOnlyOnce() async throws {
-        let store = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: legacyCapabilities
-        )
-        let initial = await store.state()
-        XCTAssertTrue(initial.needsLegacyImport)
-
-        let imported = try await store.importLegacySettings(settings(chargeLimit: 75))
-        let ignoredSecondImport = try await store.importLegacySettings(settings(chargeLimit: 60))
-
-        XCTAssertFalse(imported.needsLegacyImport)
-        XCTAssertEqual(imported.settings.chargeLimit, 75)
-        XCTAssertEqual(ignoredSecondImport, imported)
-    }
-
-    func testFirmwareCapabilitiesNormalizeLegacyOnlySettings() async throws {
-        let store = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: firmwareCapabilities
-        )
-        var candidate = settings(chargeLimit: 80)
-        candidate.automaticDischarge = true
-        candidate.preventSleepUntilLimit = true
-        candidate.heatProtectionEnabled = true
-        candidate.manageMagSafeLED = true
-
-        let result = try await store.setSettings(candidate).settings
-
-        XCTAssertTrue(result.managementEnabled)
-        XCTAssertTrue(result.sailingModeEnabled)
-        XCTAssertFalse(result.automaticDischarge)
-        XCTAssertFalse(result.preventSleepUntilLimit)
-        XCTAssertFalse(result.heatProtectionEnabled)
-        XCTAssertFalse(result.manageMagSafeLED)
-    }
-
-    func testUnsupportedCapabilitiesDisableManagement() async throws {
-        let store = try DaemonSettingsStore(
-            persistence: InMemoryDaemonSettingsPersistence(),
-            capabilities: unsupportedCapabilities
-        )
-
-        let result = try await store.setSettings(settings(chargeLimit: 80)).settings
-
-        XCTAssertFalse(result.managementEnabled)
-        XCTAssertFalse(result.sailingModeEnabled)
-        XCTAssertFalse(result.automaticDischarge)
-    }
-
-    private var legacyCapabilities: DaemonCapabilities {
-        DaemonCapabilities(
-            chargeControlMode: .legacy,
-            adapterControl: true,
-            magSafeLEDKeyAvailable: true
-        )
-    }
-
-    private var firmwareCapabilities: DaemonCapabilities {
-        DaemonCapabilities(
-            chargeControlMode: .firmware,
-            adapterControl: true,
-            magSafeLEDKeyAvailable: true
-        )
-    }
-
-    private var unsupportedCapabilities: DaemonCapabilities {
-        DaemonCapabilities(
-            chargeControlMode: .unsupported,
-            adapterControl: false,
-            magSafeLEDKeyAvailable: false
-        )
-    }
-
-    private func settings(chargeLimit: Int) -> DaemonSettings {
-        DaemonSettings(
-            managementEnabled: true,
-            chargeLimit: chargeLimit,
-            sailingModeEnabled: true,
-            sailingDelta: 5,
-            automaticDischarge: true,
-            preventSleepUntilLimit: true,
-            heatProtectionEnabled: true,
-            heatProtectionLimit: 40,
-            manageMagSafeLED: true,
-            heatProtectionLEDStateRawValue: 6
+        XCTAssertEqual(input.chargeLimit, 75)
+        XCTAssertFalse(input.sailingModeEnabled)
+        XCTAssertFalse(input.automaticDischarge)
+        XCTAssertEqual(
+            input.batteryPercentage(
+                for: .init(batteryPercentage: 70, hardwareBatteryPercentage: 73, adapterConnected: true, batteryTemperature: 30)
+            ),
+            73
         )
     }
 }
 
-enum TestPersistenceError: Error, Equatable {
-    case saveFailed
-}
-
-final class InMemoryDaemonSettingsPersistence: DaemonSettingsPersisting, @unchecked Sendable {
+final class InMemoryChargingSettingsPersistence: ChargingSettingsPersisting, @unchecked Sendable {
     private let lock = NSLock()
-    private var storedData: Data?
-    private var failSaves = false
+    private var values: [String: Data] = [:]
 
-    var shouldFailSaves: Bool {
-        get { lock.withLock { failSaves } }
-        set { lock.withLock { failSaves = newValue } }
-    }
-
-    func load() throws -> Data? {
-        lock.withLock { storedData }
-    }
-
-    func save(_ data: Data) throws {
-        try lock.withLock {
-            guard !failSaves else { throw TestPersistenceError.saveFailed }
-            storedData = data
-        }
-    }
+    func data(forKey key: String) -> Data? { lock.withLock { values[key] } }
+    func set(_ data: Data, forKey key: String) { lock.withLock { values[key] = data } }
+    func removeObject(forKey key: String) { lock.withLock { values[key] = nil } }
 }

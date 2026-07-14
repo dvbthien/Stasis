@@ -20,7 +20,13 @@ class ChargingDaemonManager {
 
   private(set) var helperStatus: ChargingHelperStatus
   private(set) var connectionStatus: ChargingDaemonConnectionStatus = .disconnected
-  private(set) var daemonSettingsState: DaemonSettingsState?
+  private(set) var chargingManagementSettings: ChargingManagementSettings?
+  private(set) var chargingThresholdSettings: ChargingThresholdSettings?
+  private(set) var automaticDischargeSettings: AutomaticDischargeSettings?
+  private(set) var sleepPreventionSettings: SleepPreventionSettings?
+  private(set) var heatProtectionSettings: HeatProtectionSettings?
+  private(set) var magSafeLEDSettings: MagSafeLEDSettings?
+  private(set) var batteryPercentageSettings: BatteryPercentageSettings?
   private(set) var daemonSnapshot: DaemonSnapshot?
 
   var hasFreshDaemonSnapshot: Bool {
@@ -61,6 +67,9 @@ class ChargingDaemonManager {
     logger.info("Unregistering charging daemon")
     var preparedDaemon = false
     if service.status == .enabled {
+      if chargingManagementSettings?.isEnabled == true {
+        _ = try await setChargingManagementSettings(.init(isEnabled: false))
+      }
       try await executeCommand("Prepare charging daemon for uninstall") { helper, reply in
         helper.prepareForUninstall(authData: nil, reply: reply)
       }
@@ -126,31 +135,109 @@ class ChargingDaemonManager {
     }
   }
 
-  func synchronizeChargingSettings(_ settings: DaemonSettings) async throws -> DaemonSettingsState {
+  func setChargingManagementSettings(
+    _ settings: ChargingManagementSettings
+  ) async throws -> ChargingManagementSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
-    try await executeCommand("Synchronize daemon charging settings") { [weak self] helper, reply in
-      helper.setSettings(authData: nil, payload: payload) { response, errorMessage in
+    try await executeCommand("Set charging management settings") { [weak self] helper, reply in
+      helper.setChargingManagementSettings(payload: payload) { response, error in
         Task { @MainActor in
-          guard let response else {
-            reply(false, errorMessage ?? "Daemon rejected charging settings")
-            return
-          }
-          do {
-            self?.daemonSettingsState = try DaemonPayloadCodec.decode(
-              DaemonSettingsState.self,
-              from: response
-            )
-            reply(true, nil)
-          } catch {
-            reply(false, "Invalid daemon settings response: \(error.localizedDescription)")
-          }
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.chargingManagementSettings = $0 }
         }
       }
     }
-    guard let daemonSettingsState else {
-      throw XPCError.commandFailed("Daemon did not return canonical charging settings")
+    guard let chargingManagementSettings else { throw XPCError.commandFailed("Missing management settings response") }
+    return chargingManagementSettings
+  }
+
+  func setChargingThresholdSettings(
+    _ settings: ChargingThresholdSettings
+  ) async throws -> ChargingThresholdSettings {
+    let payload = try DaemonPayloadCodec.encode(settings)
+    try await executeCommand("Set charging threshold settings") { [weak self] helper, reply in
+      helper.setChargingThresholdSettings(payload: payload) { response, error in
+        Task { @MainActor in
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.chargingThresholdSettings = $0 }
+        }
+      }
     }
-    return daemonSettingsState
+    guard let chargingThresholdSettings else { throw XPCError.commandFailed("Missing threshold settings response") }
+    return chargingThresholdSettings
+  }
+
+  func setAutomaticDischargeSettings(
+    _ settings: AutomaticDischargeSettings
+  ) async throws -> AutomaticDischargeSettings {
+    let payload = try DaemonPayloadCodec.encode(settings)
+    try await executeCommand("Set automatic discharge settings") { [weak self] helper, reply in
+      helper.setAutomaticDischargeSettings(payload: payload) { response, error in
+        Task { @MainActor in
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.automaticDischargeSettings = $0 }
+        }
+      }
+    }
+    guard let automaticDischargeSettings else { throw XPCError.commandFailed("Missing discharge settings response") }
+    return automaticDischargeSettings
+  }
+
+  func setSleepPreventionSettings(
+    _ settings: SleepPreventionSettings
+  ) async throws -> SleepPreventionSettings {
+    let payload = try DaemonPayloadCodec.encode(settings)
+    try await executeCommand("Set sleep prevention settings") { [weak self] helper, reply in
+      helper.setSleepPreventionSettings(payload: payload) { response, error in
+        Task { @MainActor in
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.sleepPreventionSettings = $0 }
+        }
+      }
+    }
+    guard let sleepPreventionSettings else { throw XPCError.commandFailed("Missing sleep settings response") }
+    return sleepPreventionSettings
+  }
+
+  func setHeatProtectionSettings(
+    _ settings: HeatProtectionSettings
+  ) async throws -> HeatProtectionSettings {
+    let payload = try DaemonPayloadCodec.encode(settings)
+    try await executeCommand("Set heat protection settings") { [weak self] helper, reply in
+      helper.setHeatProtectionSettings(payload: payload) { response, error in
+        Task { @MainActor in
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.heatProtectionSettings = $0 }
+        }
+      }
+    }
+    guard let heatProtectionSettings else { throw XPCError.commandFailed("Missing heat settings response") }
+    return heatProtectionSettings
+  }
+
+  func setMagSafeLEDSettings(
+    _ settings: MagSafeLEDSettings
+  ) async throws -> MagSafeLEDSettings {
+    let payload = try DaemonPayloadCodec.encode(settings)
+    try await executeCommand("Set MagSafe LED settings") { [weak self] helper, reply in
+      helper.setMagSafeLEDSettings(payload: payload) { response, error in
+        Task { @MainActor in
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.magSafeLEDSettings = $0 }
+        }
+      }
+    }
+    guard let magSafeLEDSettings else { throw XPCError.commandFailed("Missing MagSafe settings response") }
+    return magSafeLEDSettings
+  }
+
+  func setBatteryPercentageSettings(
+    _ settings: BatteryPercentageSettings
+  ) async throws -> BatteryPercentageSettings {
+    let payload = try DaemonPayloadCodec.encode(settings)
+    try await executeCommand("Set battery percentage settings") { [weak self] helper, reply in
+      helper.setBatteryPercentageSettings(payload: payload) { response, error in
+        Task { @MainActor in
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.batteryPercentageSettings = $0 }
+        }
+      }
+    }
+    guard let batteryPercentageSettings else { throw XPCError.commandFailed("Missing percentage settings response") }
+    return batteryPercentageSettings
   }
 
   func setChargeLimitOverride(_ enabled: Bool) async throws {
@@ -158,7 +245,7 @@ class ChargingDaemonManager {
       let generation = self?.snapshotAuthority.generation
       helper.setChargeLimitOverride(enabled: enabled) { response, errorMessage in
         Task { @MainActor in
-          self?.handleSnapshotCommandResponse(
+          self?.handleSnapshotCommandPayload(
             response,
             errorMessage: errorMessage,
             generation: generation,
@@ -174,7 +261,7 @@ class ChargingDaemonManager {
       let generation = self?.snapshotAuthority.generation
       helper.setForceDischarge(authData: nil, enabled: enabled) { response, errorMessage in
         Task { @MainActor in
-          self?.handleSnapshotCommandResponse(
+          self?.handleSnapshotCommandPayload(
             response,
             errorMessage: errorMessage,
             generation: generation,
@@ -238,6 +325,20 @@ class ChargingDaemonManager {
         }
       }
     }
+    for _ in 0..<160 {
+      if chargingManagementSettings != nil,
+        chargingThresholdSettings != nil,
+        automaticDischargeSettings != nil,
+        sleepPreventionSettings != nil,
+        heatProtectionSettings != nil,
+        magSafeLEDSettings != nil,
+        batteryPercentageSettings != nil
+      {
+        return
+      }
+      try await Task.sleep(for: .milliseconds(50))
+    }
+    throw XPCError.timedOut("Charging daemon did not finish loading settings.")
   }
 
   func recordRuntimeError(_ error: Error, while label: String) {
@@ -248,6 +349,13 @@ class ChargingDaemonManager {
 
   private func connect() {
     connectionStatus = .connecting
+    chargingManagementSettings = nil
+    chargingThresholdSettings = nil
+    automaticDischargeSettings = nil
+    sleepPreventionSettings = nil
+    heatProtectionSettings = nil
+    magSafeLEDSettings = nil
+    batteryPercentageSettings = nil
     let generation = snapshotAuthority.beginConnection()
     logger.info("Setting up XPC connection to charging daemon")
     let newConnection = NSXPCConnection(
@@ -259,7 +367,7 @@ class ChargingDaemonManager {
     newConnection.exportedInterface = NSXPCInterface(
       with: ChargingDaemonClientProtocol.self
     )
-    let receiver = makeCallbackReceiver(for: generation)
+    let receiver = makeSnapshotCallbackReceiver(for: generation)
     callbackReceiver = receiver
     newConnection.exportedObject = receiver
 
@@ -291,7 +399,7 @@ class ChargingDaemonManager {
 
     newConnection.resume()
     connection = newConnection
-    synchronizeInitialState(generation: generation)
+    requestInitialDaemonState(generation: generation)
   }
 
   func disconnect() {
@@ -404,22 +512,17 @@ class ChargingDaemonManager {
     snapshotAuthority.isCurrent(generation) && connection != nil
   }
 
-  private func makeCallbackReceiver(for generation: UInt64) -> ChargingDaemonCallbackReceiver {
+  private func makeSnapshotCallbackReceiver(for generation: UInt64) -> ChargingDaemonCallbackReceiver {
     ChargingDaemonCallbackReceiver(
       stateDidChange: { [weak self] payload in
         Task { @MainActor in
-          self?.receiveSnapshot(payload, generation: generation)
-        }
-      },
-      settingsDidChange: { [weak self] payload in
-        Task { @MainActor in
-          self?.receiveSettings(payload, generation: generation)
+          self?.handleSnapshotPayload(payload, generation: generation)
         }
       }
     )
   }
 
-  private func synchronizeInitialState(generation: UInt64) {
+  private func requestInitialDaemonState(generation: UInt64) {
     guard
       let helper = getHelper(errorHandler: { [weak self] error in
         Task { @MainActor in
@@ -429,24 +532,44 @@ class ChargingDaemonManager {
       })
     else { return }
 
-    helper.getSettings { [weak self] payload, errorMessage in
+    requestSettingsGroup(generation: generation, getter: helper.getChargingManagementSettings) {
+      self.chargingManagementSettings = $0
+    }
+    requestSettingsGroup(generation: generation, getter: helper.getChargingThresholdSettings) {
+      self.chargingThresholdSettings = $0
+    }
+    requestSettingsGroup(generation: generation, getter: helper.getAutomaticDischargeSettings) {
+      self.automaticDischargeSettings = $0
+    }
+    requestSettingsGroup(generation: generation, getter: helper.getSleepPreventionSettings) {
+      self.sleepPreventionSettings = $0
+    }
+    requestSettingsGroup(generation: generation, getter: helper.getHeatProtectionSettings) {
+      self.heatProtectionSettings = $0
+    }
+    requestSettingsGroup(generation: generation, getter: helper.getMagSafeLEDSettings) {
+      self.magSafeLEDSettings = $0
+    }
+    requestSettingsGroup(generation: generation, getter: helper.getBatteryPercentageSettings) {
+      self.batteryPercentageSettings = $0
+    }
+    requestDaemonSnapshot(generation: generation)
+  }
+
+  private func requestSettingsGroup<Value: Decodable & Sendable>(
+    generation: UInt64,
+    getter: (@escaping @Sendable (Data?, String?) -> Void) -> Void,
+    assign: @escaping @MainActor (Value) -> Void
+  ) {
+    getter { [weak self] payload, errorMessage in
       Task { @MainActor in
         guard let self, self.isActiveConnection(generation) else { return }
         guard let payload else {
-          self.connectionStatus = .runtimeFailed(
-            errorMessage ?? "Daemon did not return settings"
-          )
+          self.connectionStatus = .runtimeFailed(errorMessage ?? "Daemon did not return settings")
           return
         }
-
         do {
-          let state = try DaemonPayloadCodec.decode(DaemonSettingsState.self, from: payload)
-          if state.needsLegacyImport {
-            self.importLegacySettings(generation: generation)
-          } else {
-            self.daemonSettingsState = state
-            self.requestInitialSnapshot(generation: generation)
-          }
+          assign(try DaemonPayloadCodec.decode(Value.self, from: payload))
         } catch {
           self.recordRuntimeError(error, while: "Decode daemon settings")
         }
@@ -454,40 +577,7 @@ class ChargingDaemonManager {
     }
   }
 
-  private func importLegacySettings(generation: UInt64) {
-    guard
-      let payload = try? DaemonPayloadCodec.encode(DaemonSettings.currentAppDefaults),
-      let helper = getHelper(errorHandler: { [weak self] error in
-        Task { @MainActor in
-          guard let self, self.isActiveConnection(generation) else { return }
-          self.recordRuntimeError(error, while: "Legacy settings import")
-        }
-      })
-    else { return }
-
-    helper.importLegacySettings(payload: payload) { [weak self] response, errorMessage in
-      Task { @MainActor in
-        guard let self, self.isActiveConnection(generation) else { return }
-        guard let response else {
-          self.connectionStatus = .runtimeFailed(
-            errorMessage ?? "Daemon rejected legacy settings import"
-          )
-          return
-        }
-        do {
-          self.daemonSettingsState = try DaemonPayloadCodec.decode(
-            DaemonSettingsState.self,
-            from: response
-          )
-          self.requestInitialSnapshot(generation: generation)
-        } catch {
-          self.recordRuntimeError(error, while: "Decode imported daemon settings")
-        }
-      }
-    }
-  }
-
-  private func requestInitialSnapshot(generation: UInt64) {
+  private func requestDaemonSnapshot(generation: UInt64) {
     guard
       let helper = getHelper(errorHandler: { [weak self] error in
         Task { @MainActor in
@@ -506,37 +596,29 @@ class ChargingDaemonManager {
           )
           return
         }
-        self.receiveSnapshot(payload, generation: generation)
+        self.handleSnapshotPayload(payload, generation: generation)
       }
     }
   }
 
-  private func receiveSettings(_ payload: Data, generation: UInt64) {
+  private func handleSnapshotPayload(_ payload: Data, generation: UInt64) {
     guard isActiveConnection(generation) else { return }
     do {
-      daemonSettingsState = try DaemonPayloadCodec.decode(
-        DaemonSettingsState.self,
-        from: payload
-      )
-    } catch {
-      recordRuntimeError(error, while: "Decode daemon settings callback")
-    }
-  }
-
-  private func receiveSnapshot(_ payload: Data, generation: UInt64) {
-    guard isActiveConnection(generation) else { return }
-    do {
+      let recoveredFromInterruption = connectionStatus == .interrupted
       daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
       snapshotAuthority.markAuthoritative(generation)
       // A valid callback also proves that an interrupted XPC connection has
       // recovered. This switches BatteryService back from its local fallback.
       connectionStatus = .connected
+      if recoveredFromInterruption {
+        requestInitialDaemonState(generation: generation)
+      }
     } catch {
       recordRuntimeError(error, while: "Decode daemon snapshot callback")
     }
   }
 
-  private func handleSnapshotCommandResponse(
+  private func handleSnapshotCommandPayload(
     _ payload: Data?,
     errorMessage: String?,
     generation: UInt64?,
@@ -556,6 +638,24 @@ class ChargingDaemonManager {
       reply(true, nil)
     } catch {
       reply(false, "Invalid daemon snapshot response: \(error.localizedDescription)")
+    }
+  }
+
+  private static func decodeSettingsResponse<Value: Decodable & Sendable>(
+    _ payload: Data?,
+    error: String?,
+    reply: @escaping @Sendable (Bool, String?) -> Void,
+    assign: (Value) -> Void
+  ) {
+    guard let payload else {
+      reply(false, error ?? "Daemon rejected settings")
+      return
+    }
+    do {
+      assign(try DaemonPayloadCodec.decode(Value.self, from: payload))
+      reply(true, nil)
+    } catch {
+      reply(false, "Invalid daemon settings response: \(error.localizedDescription)")
     }
   }
 }
@@ -603,22 +703,13 @@ nonisolated final class ChargingDaemonCallbackReceiver: NSObject, ChargingDaemon
   @unchecked Sendable
 {
   private let stateDidChangeHandler: @Sendable (Data) -> Void
-  private let settingsDidChangeHandler: @Sendable (Data) -> Void
 
-  init(
-    stateDidChange: @escaping @Sendable (Data) -> Void,
-    settingsDidChange: @escaping @Sendable (Data) -> Void
-  ) {
+  init(stateDidChange: @escaping @Sendable (Data) -> Void) {
     stateDidChangeHandler = stateDidChange
-    settingsDidChangeHandler = settingsDidChange
   }
 
   nonisolated func stateDidChange(_ payload: Data) {
     stateDidChangeHandler(payload)
-  }
-
-  nonisolated func settingsDidChange(_ payload: Data) {
-    settingsDidChangeHandler(payload)
   }
 }
 

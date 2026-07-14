@@ -29,16 +29,9 @@ let daemonVersion = Bundle.main.object(
 let hardware = ChargingHelper(battery: battery, adapter: adapter)
 let clients = DaemonClientRegistry()
 
-let settingsStore: DaemonSettingsStore
-do {
-    settingsStore = try DaemonSettingsStore(
-        persistence: UserDefaultsDaemonSettingsPersistence(),
-        capabilities: capabilities
-    )
-} catch {
-    logger.fault("Failed to load daemon settings: \(error.localizedDescription)")
-    exit(1)
-}
+let settingsStore = ChargingSettingsStore(
+    persistence: UserDefaultsChargingSettingsPersistence()
+)
 
 let stateStore = DaemonStateStore(
     capabilities: capabilities,

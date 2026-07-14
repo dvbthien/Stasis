@@ -89,7 +89,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         // readings, so this doesn't rebuild the whole menu on
                         // every fast-poll tick.
                         _ = self.batteryService.controlState.adapterConnected
-                        _ = ChargingDaemonManager.shared.daemonSettingsState
+                        _ = ChargingDaemonManager.shared.chargingManagementSettings
                     } onChange: {
                         Task { @MainActor in
                             continuation.resume()

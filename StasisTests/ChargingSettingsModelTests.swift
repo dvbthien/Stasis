@@ -5,227 +5,123 @@ import XCTest
 
 @MainActor
 final class ChargingSettingsModelTests: XCTestCase {
-    func testModelStartsFromDaemonCanonicalSettingsAcrossAppModelRelaunch() async {
-        let canonical = DaemonSettings(
-            managementEnabled: true,
-            chargeLimit: 73,
-            useHardwarePercentage: true
-        )
-        let client = MockChargingSettingsManager(settings: canonical)
-
-        let firstModel = ChargingSettingsModel(client: client)
-        let relaunchedModel = ChargingSettingsModel(client: client)
-
-        XCTAssertTrue(firstModel.isLoaded)
-        XCTAssertEqual(firstModel.settings, canonical)
-        XCTAssertEqual(relaunchedModel.settings, canonical)
-        firstModel.stop()
-        relaunchedModel.stop()
-        await Task.yield()
-    }
-
-    func testImmediateEditSendsFullPayloadAndAppliesCanonicalResponse() async throws {
-        var initial = DaemonSettings(managementEnabled: true, chargeLimit: 80)
-        initial.sailingDelta = 5
-        let client = MockChargingSettingsManager(settings: initial)
-        client.canonicalize = { request in
-            var canonical = request
-            canonical.chargeLimit = 75
-            return canonical
-        }
+    func testDoesNotCreatePlaceholderBeforeDaemonLoads() {
+        let client = MockChargingSettingsManager(loaded: false)
         let model = ChargingSettingsModel(client: client)
 
-        model.set(\.automaticDischarge, to: false)
-        try await waitUntil { !model.isSaving && client.savedSettings.count == 1 }
-
-        XCTAssertEqual(client.savedSettings.first?.sailingDelta, 5)
-        XCTAssertEqual(client.savedSettings.first?.automaticDischarge, false)
-        XCTAssertEqual(model.settings.chargeLimit, 75)
-        XCTAssertEqual(model.settings, client.daemonSettingsState?.settings)
-        model.stop()
+        XCTAssertNil(model.management)
+        XCTAssertNil(model.threshold)
+        XCTAssertNil(model.batteryPercentage)
+        XCTAssertFalse(model.isLoaded)
     }
 
-    func testSliderEditsAreDebouncedAndCoalesced() async throws {
-        let client = MockChargingSettingsManager(
-            settings: DaemonSettings(managementEnabled: true, chargeLimit: 80)
-        )
-        let model = ChargingSettingsModel(
-            client: client,
-            sliderDebounce: .milliseconds(40)
-        )
+    func testLoadsEachGroupFromDaemon() {
+        let model = ChargingSettingsModel(client: MockChargingSettingsManager())
 
-        model.set(\.chargeLimit, to: 75, debounced: true)
-        try await Task.sleep(for: .milliseconds(10))
-        model.set(\.chargeLimit, to: 70, debounced: true)
-
-        try await waitUntil { !model.isSaving && client.savedSettings.count == 1 }
-        XCTAssertEqual(client.savedSettings.map(\.chargeLimit), [70])
-        XCTAssertEqual(model.settings.chargeLimit, 70)
-        model.stop()
+        XCTAssertTrue(model.isLoaded)
+        XCTAssertEqual(model.threshold?.chargeLimit, 80)
+        XCTAssertEqual(model.batteryPercentage?.useHardwarePercentage, false)
     }
 
-    func testSaveFailureRollsBackToLastConfirmedSettings() async throws {
-        let confirmed = DaemonSettings(
-            managementEnabled: true,
-            chargeLimit: 80,
-            automaticDischarge: true
-        )
-        let client = MockChargingSettingsManager(settings: confirmed)
-        client.saveError = MockChargingSettingsError.rejected
+    func testToggleSendsOnlyItsGroup() async {
+        let client = MockChargingSettingsManager()
         let model = ChargingSettingsModel(client: client)
 
-        model.set(\.automaticDischarge, to: false)
-        XCTAssertFalse(model.settings.automaticDischarge)
+        model.setAutomaticDischargeEnabled(false)
+        await waitForSaves(model)
 
-        try await waitUntil { model.errorMessage != nil && !model.isSaving }
-        XCTAssertEqual(model.settings, confirmed)
-        XCTAssertEqual(client.daemonSettingsState?.settings, confirmed)
-        XCTAssertEqual(client.savedSettings.count, 1)
-        model.stop()
+        XCTAssertEqual(client.dischargeWrites, [.init(isEnabled: false)])
+        XCTAssertTrue(client.thresholdWrites.isEmpty)
     }
 
-    func testManagementToggleWaitsForDaemonConfirmation() async throws {
-        let client = MockChargingSettingsManager(settings: DaemonSettings())
-        client.saveDelay = .milliseconds(60)
+    func testFailedGroupRollsBackWithoutChangingOtherGroups() async {
+        let client = MockChargingSettingsManager()
+        client.dischargeError = TestError.failed
         let model = ChargingSettingsModel(client: client)
 
-        model.setManagementEnabled(true)
+        model.setAutomaticDischargeEnabled(false)
+        model.setUseHardwarePercentage(true)
+        await waitForSaves(model)
 
-        XCTAssertFalse(model.settings.managementEnabled)
-        try await waitUntil { client.savedSettings.count == 1 }
-        XCTAssertFalse(model.settings.managementEnabled)
-
-        try await waitUntil { !model.isSaving && model.settings.managementEnabled }
-        XCTAssertTrue(client.daemonSettingsState?.settings.managementEnabled == true)
-        model.stop()
+        XCTAssertEqual(model.automaticDischarge, .init(isEnabled: true))
+        XCTAssertEqual(model.batteryPercentage, .init(useHardwarePercentage: true))
+        XCTAssertNotNil(model.errorMessage)
     }
 
-    func testDaemonUninstallPreparationPersistsManagementDisabled() async throws {
-        let client = MockChargingSettingsManager(
-            settings: DaemonSettings(managementEnabled: true, chargeLimit: 75)
-        )
+    func testSliderDebouncesThresholdWrites() async {
+        let client = MockChargingSettingsManager()
+        let model = ChargingSettingsModel(client: client, sliderDebounce: .milliseconds(20))
+
+        model.updateChargingThreshold(debounced: true) { $0.chargeLimit = 85 }
+        model.updateChargingThreshold(debounced: true) { $0.chargeLimit = 90 }
+        try? await Task.sleep(for: .milliseconds(80))
+        await waitForSaves(model)
+
+        XCTAssertEqual(client.thresholdWrites.count, 1)
+        XCTAssertEqual(client.thresholdWrites.first?.chargeLimit, 90)
+    }
+
+    func testDisableBeforeUninstallPersistsManagementOff() async throws {
+        let client = MockChargingSettingsManager()
+        client.chargingManagementSettings = .init(isEnabled: true)
         let model = ChargingSettingsModel(client: client)
 
         try await model.disableManagementForDaemonUninstall()
 
-        XCTAssertFalse(model.settings.managementEnabled)
-        XCTAssertFalse(client.daemonSettingsState?.settings.managementEnabled ?? true)
-        XCTAssertEqual(client.savedSettings.count, 1)
-        XCTAssertEqual(client.savedSettings.first?.chargeLimit, 75)
-        model.stop()
+        XCTAssertEqual(client.managementWrites.last, .init(isEnabled: false))
+        XCTAssertFalse(model.management?.isEnabled ?? true)
     }
 
-    func testDaemonUninstallPreparationRollsBackWhenSaveFails() async {
-        let confirmed = DaemonSettings(managementEnabled: true, chargeLimit: 80)
-        let client = MockChargingSettingsManager(settings: confirmed)
-        client.saveError = MockChargingSettingsError.rejected
-        let model = ChargingSettingsModel(client: client)
-
-        do {
-            try await model.disableManagementForDaemonUninstall()
-            XCTFail("Expected uninstall preparation to fail")
-        } catch {
-            XCTAssertEqual(model.settings, confirmed)
-            XCTAssertNotNil(model.errorMessage)
+    private func waitForSaves(_ model: ChargingSettingsModel) async {
+        for _ in 0..<100 where model.isSaving {
+            await Task.yield()
         }
-
-        model.stop()
-    }
-
-    func testCapabilityAvailabilityDisablesLegacyOnlyFirmwareFeatures() {
-        let unresolved = ChargingSettingsAvailability(capabilities: nil)
-        XCTAssertFalse(unresolved.isResolved)
-        XCTAssertFalse(unresolved.management)
-        XCTAssertTrue(unresolved.canAttemptManagement)
-
-        let legacy = ChargingSettingsAvailability(
-            capabilities: capabilities(mode: .legacy)
-        )
-        XCTAssertTrue(legacy.isResolved)
-        XCTAssertTrue(legacy.canAttemptManagement)
-        XCTAssertTrue(legacy.management)
-        XCTAssertTrue(legacy.automaticDischarge)
-        XCTAssertTrue(legacy.sleepPrevention)
-        XCTAssertTrue(legacy.heatProtection)
-        XCTAssertTrue(legacy.magSafeLED)
-
-        let firmware = ChargingSettingsAvailability(
-            capabilities: capabilities(mode: .firmware)
-        )
-        XCTAssertTrue(firmware.management)
-        XCTAssertTrue(firmware.sailingMode)
-        XCTAssertFalse(firmware.automaticDischarge)
-        XCTAssertFalse(firmware.sleepPrevention)
-        XCTAssertFalse(firmware.heatProtection)
-        XCTAssertFalse(firmware.magSafeLED)
-
-        let unsupported = ChargingSettingsAvailability(
-            capabilities: capabilities(mode: .unsupported)
-        )
-        XCTAssertTrue(unsupported.isResolved)
-        XCTAssertFalse(unsupported.canAttemptManagement)
-        XCTAssertFalse(unsupported.management)
-        XCTAssertFalse(unsupported.sailingMode)
-    }
-
-    private func capabilities(mode: ChargeControlMode) -> DaemonCapabilities {
-        DaemonCapabilities(
-            chargeControlMode: mode,
-            adapterControl: true,
-            magSafeLEDKeyAvailable: true
-        )
-    }
-
-    private func waitUntil(
-        _ condition: @escaping @MainActor () -> Bool
-    ) async throws {
-        for _ in 0..<100 {
-            if condition() { return }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTFail("Timed out waiting for asynchronous settings state")
     }
 }
 
-private enum MockChargingSettingsError: Error {
-    case rejected
-}
+private enum TestError: Error { case failed }
 
 @MainActor
 @Observable
 private final class MockChargingSettingsManager: ChargingSettingsManaging {
-    var daemonSettingsState: DaemonSettingsState?
+    var chargingManagementSettings: ChargingManagementSettings?
+    var chargingThresholdSettings: ChargingThresholdSettings?
+    var automaticDischargeSettings: AutomaticDischargeSettings?
+    var sleepPreventionSettings: SleepPreventionSettings?
+    var heatProtectionSettings: HeatProtectionSettings?
+    var magSafeLEDSettings: MagSafeLEDSettings?
+    var batteryPercentageSettings: BatteryPercentageSettings?
     var daemonSnapshot: DaemonSnapshot?
-    var savedSettings: [DaemonSettings] = []
-    var saveDelay: Duration?
-    var saveError: Error?
-    var canonicalize: (DaemonSettings) -> DaemonSettings = { $0 }
 
-    init(settings: DaemonSettings) {
-        daemonSettingsState = DaemonSettingsState(
-            settings: settings,
-            revision: 1,
-            needsLegacyImport: false
-        )
+    var managementWrites: [ChargingManagementSettings] = []
+    var thresholdWrites: [ChargingThresholdSettings] = []
+    var dischargeWrites: [AutomaticDischargeSettings] = []
+    var dischargeError: Error?
+
+    init(loaded: Bool = true) {
+        guard loaded else { return }
+        chargingManagementSettings = .init()
+        chargingThresholdSettings = .init()
+        automaticDischargeSettings = .init()
+        sleepPreventionSettings = .init()
+        heatProtectionSettings = .init()
+        magSafeLEDSettings = .init()
+        batteryPercentageSettings = .init()
     }
 
-    func synchronizeChargingSettings(
-        _ settings: DaemonSettings
-    ) async throws -> DaemonSettingsState {
-        savedSettings.append(settings)
-        if let saveDelay {
-            try await Task.sleep(for: saveDelay)
-        }
-        if let saveError {
-            throw saveError
-        }
-
-        let state = DaemonSettingsState(
-            settings: canonicalize(settings),
-            revision: (daemonSettingsState?.revision ?? 0) + 1,
-            needsLegacyImport: false
-        )
-        daemonSettingsState = state
-        return state
+    func setChargingManagementSettings(_ value: ChargingManagementSettings) async throws -> ChargingManagementSettings {
+        managementWrites.append(value); chargingManagementSettings = value; return value
     }
+    func setChargingThresholdSettings(_ value: ChargingThresholdSettings) async throws -> ChargingThresholdSettings {
+        thresholdWrites.append(value); chargingThresholdSettings = value; return value
+    }
+    func setAutomaticDischargeSettings(_ value: AutomaticDischargeSettings) async throws -> AutomaticDischargeSettings {
+        dischargeWrites.append(value)
+        if let dischargeError { throw dischargeError }
+        automaticDischargeSettings = value; return value
+    }
+    func setSleepPreventionSettings(_ value: SleepPreventionSettings) async throws -> SleepPreventionSettings { sleepPreventionSettings = value; return value }
+    func setHeatProtectionSettings(_ value: HeatProtectionSettings) async throws -> HeatProtectionSettings { heatProtectionSettings = value; return value }
+    func setMagSafeLEDSettings(_ value: MagSafeLEDSettings) async throws -> MagSafeLEDSettings { magSafeLEDSettings = value; return value }
+    func setBatteryPercentageSettings(_ value: BatteryPercentageSettings) async throws -> BatteryPercentageSettings { batteryPercentageSettings = value; return value }
 }
