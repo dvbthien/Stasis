@@ -15,14 +15,15 @@ class BatteryService {
 
   private let ioKitService = IOKitService()
   private let daemonManager = ChargingDaemonManager.shared
+  private let smcReader = SMCReaderHelperClient.shared
 
   private var ioKitMonitorTask: Task<Void, Never>?
-  private var daemonTelemetrySyncTask: Task<Void, Never>?
+  private var smcTelemetryTask: Task<Void, Never>?
+  private var smcSingleTelemetryTask: Task<Void, Never>?
 
   private var fallbackMetrics = BatteryMetrics()
   private var fallbackAdapterMetrics = AdapterMetrics()
   private var telemetryRequested = false
-  private var appliedDaemonTelemetry = false
   private var isStopped = false
 
   private let logger = Logger.stasis("BatteryService")
@@ -71,11 +72,6 @@ class BatteryService {
     } else {
       startIOKitMonitoring()
       applyFallbackSnapshot()
-      if appliedDaemonTelemetry {
-        // XPC invalidation/interruption removes this client's demand in the
-        // daemon, so no disable command is needed on a broken connection.
-        appliedDaemonTelemetry = false
-      }
     }
     synchronizeTelemetryDemand()
   }
@@ -141,10 +137,12 @@ class BatteryService {
 
     applyMetrics(updatedBattery, adapter: updatedAdapter)
     applyCapabilities(snapshot.capabilities)
+    scheduleSMCTelemetryRefresh()
   }
 
   private func applyFallbackSnapshot() {
     applyMetrics(fallbackMetrics, adapter: fallbackAdapterMetrics)
+    scheduleSMCTelemetryRefresh()
   }
 
   private func applyMetrics(_ updatedBattery: BatteryMetrics, adapter updatedAdapter: AdapterMetrics) {
@@ -166,43 +164,78 @@ class BatteryService {
     )
   }
 
-  private var shouldEnableDaemonTelemetry: Bool {
-    telemetryRequested && authoritativeDaemonSnapshot != nil
+  private func synchronizeTelemetryDemand() {
+    guard !isStopped else { return }
+    if telemetryRequested {
+      startSMCTelemetryPolling()
+    } else {
+      stopSMCTelemetryPolling()
+    }
   }
 
-  private func synchronizeTelemetryDemand() {
-    guard daemonTelemetrySyncTask == nil,
-      shouldEnableDaemonTelemetry != appliedDaemonTelemetry
-    else {
+  private func startSMCTelemetryPolling() {
+    guard smcTelemetryTask == nil else {
       return
     }
 
-    daemonTelemetrySyncTask = Task { [weak self] in
+    smcTelemetryTask = Task { [weak self] in
       guard let self else { return }
-
-      while self.shouldEnableDaemonTelemetry != self.appliedDaemonTelemetry {
-        let target = self.shouldEnableDaemonTelemetry
-        do {
-          try await self.daemonManager.setTelemetryActive(target)
-          self.appliedDaemonTelemetry = target
-        } catch {
-          if !target {
-            self.appliedDaemonTelemetry = false
-          }
-          self.logger.error(
-            "Could not set daemon telemetry to \(target): \(error.localizedDescription)"
-          )
-          break
-        }
+      while !Task.isCancelled, self.telemetryRequested, !self.isStopped {
+        await self.refreshSMCTelemetryOnce()
+        try? await Task.sleep(for: .seconds(1))
       }
-
-      self.daemonTelemetrySyncTask = nil
-      if self.shouldEnableDaemonTelemetry != self.appliedDaemonTelemetry,
-        self.authoritativeDaemonSnapshot != nil
-      {
+      self.smcTelemetryTask = nil
+      if self.telemetryRequested, !self.isStopped {
         self.synchronizeTelemetryDemand()
       }
     }
+  }
+
+  private func stopSMCTelemetryPolling() {
+    smcTelemetryTask?.cancel()
+    smcTelemetryTask = nil
+  }
+
+  private func scheduleSMCTelemetryRefresh() {
+    guard !isStopped, !telemetryRequested else { return }
+    smcSingleTelemetryTask?.cancel()
+    smcSingleTelemetryTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(1))
+      guard
+        !Task.isCancelled,
+        let self,
+        !self.isStopped,
+        !self.telemetryRequested
+      else {
+        return
+      }
+
+      await self.refreshSMCTelemetryOnce()
+      self.smcSingleTelemetryTask = nil
+    }
+  }
+
+  private func refreshSMCTelemetryOnce() async {
+    do {
+      applySMCTelemetryOverlay(try await smcReader.readAllMetrics())
+    } catch {
+      logger.error("Could not read SMC telemetry: \(error.localizedDescription)")
+    }
+  }
+
+  private func applySMCTelemetryOverlay(_ telemetry: SMCTelemetryMetrics) {
+    var updatedBattery = metrics
+    var updatedAdapter = adapterMetrics
+
+    updatedBattery.batteryVoltage = telemetry.batteryVoltage
+    updatedBattery.batteryCurrent = telemetry.batteryCurrent
+    updatedBattery.batteryPower = telemetry.batteryPower
+
+    updatedAdapter.adapterVoltage = telemetry.adapterVoltage
+    updatedAdapter.adapterCurrent = telemetry.adapterCurrent
+    updatedAdapter.adapterPower = telemetry.adapterPower
+
+    applyMetrics(updatedBattery, adapter: updatedAdapter)
   }
 
   private func updateControlState(from metrics: BatteryMetrics, adapter: AdapterMetrics) {
@@ -221,8 +254,10 @@ class BatteryService {
     logger.info("BatteryService stopping")
     isStopped = true
     telemetryRequested = false
-    daemonTelemetrySyncTask?.cancel()
-    daemonTelemetrySyncTask = nil
+    smcSingleTelemetryTask?.cancel()
+    smcSingleTelemetryTask = nil
+    stopSMCTelemetryPolling()
+    smcReader.invalidate()
     stopIOKitMonitoring()
   }
 }

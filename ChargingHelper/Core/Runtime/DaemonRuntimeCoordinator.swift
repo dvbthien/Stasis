@@ -9,12 +9,7 @@ actor DaemonRuntimeCoordinator {
     private let stateStore: DaemonStateStore
     private let hardware: any DaemonHardwareControlling
     private let clients: DaemonClientRegistry
-    private let telemetryInterval: Duration
-    private let delayedTelemetryRefreshDelay: Duration
 
-    private var telemetryClients: Set<UUID> = []
-    private var telemetryTask: Task<Void, Never>?
-    private var delayedTelemetryTask: Task<Void, Never>?
     private var managementEngine: BatteryManagementEngine?
     private var ioKitRefreshHandler: IOKitRefreshHandler?
 
@@ -22,16 +17,12 @@ actor DaemonRuntimeCoordinator {
         settingsStore: DaemonSettingsStore,
         stateStore: DaemonStateStore,
         hardware: any DaemonHardwareControlling,
-        clients: DaemonClientRegistry,
-        telemetryInterval: Duration = .seconds(1),
-        delayedTelemetryRefreshDelay: Duration = .seconds(3)
+        clients: DaemonClientRegistry
     ) {
         self.settingsStore = settingsStore
         self.stateStore = stateStore
         self.hardware = hardware
         self.clients = clients
-        self.telemetryInterval = telemetryInterval
-        self.delayedTelemetryRefreshDelay = delayedTelemetryRefreshDelay
     }
 
     func installManagementEngine(_ engine: BatteryManagementEngine) async {
@@ -48,13 +39,9 @@ actor DaemonRuntimeCoordinator {
 
         if update.reason == .initial || update.reason == .wake {
             await refreshHardwareState()
-            await refreshTelemetryAndPublish()
+            await publishCurrentSnapshot()
         } else {
             await publishCurrentSnapshot()
-        }
-
-        if update.reason == .interestNotification {
-            scheduleDelayedTelemetryRefresh()
         }
 
         let policyEvent: DaemonPolicyEvent =
@@ -83,24 +70,15 @@ actor DaemonRuntimeCoordinator {
 
     func reconcilePolicyAfterHardwareCommand() async {
         _ = await refreshIOKitSnapshot(reason: .hardwareRefresh)
-        await refreshTelemetryAndPublish(refreshHardware: true)
-        scheduleDelayedTelemetryRefresh()
+        await publishCurrentSnapshot(refreshHardware: true)
         await reconcilePolicy(on: .hardwareCommand)
     }
 
-    /// Refreshes measurements after policy reconciliation has already applied
+    /// Publishes state after policy reconciliation has already applied
     /// hardware state. This deliberately does not enqueue another policy event.
-    private func refreshTelemetryAfterPolicyReconcile() async {
+    private func publishSnapshotAfterPolicyReconcile() async {
         _ = await refreshIOKitSnapshot(reason: .hardwareRefresh)
-        await refreshTelemetryAndPublish()
-        scheduleDelayedTelemetryRefresh()
-    }
-
-    /// Samples telemetry and publishes one complete snapshot. IOKit-driven,
-    /// client-demand, and post-hardware refreshes use this same path.
-    func refreshTelemetryAndPublish(refreshHardware: Bool = false) async {
-        await sampleTelemetry()
-        await publishCurrentSnapshot(refreshHardware: refreshHardware)
+        await publishCurrentSnapshot()
     }
 
     func reconcilePolicyAfterSettingsChange() async {
@@ -132,28 +110,6 @@ actor DaemonRuntimeCoordinator {
         return await currentSnapshot(refreshHardware: false)
     }
 
-    func setTelemetryActive(_ active: Bool, for clientID: UUID) async {
-        if active {
-            telemetryClients.insert(clientID)
-            guard telemetryTask == nil else { return }
-            await refreshTelemetryAndPublish()
-            guard !telemetryClients.isEmpty else { return }
-            startTelemetryLoop()
-        } else {
-            telemetryClients.remove(clientID)
-            stopTelemetryLoopIfUnused()
-        }
-    }
-
-    func clientDisconnected(_ clientID: UUID) {
-        telemetryClients.remove(clientID)
-        stopTelemetryLoopIfUnused()
-    }
-
-    func isTelemetryActive() -> Bool {
-        telemetryTask != nil
-    }
-
     func prepareForUninstall() async throws {
         guard let managementEngine else {
             throw DaemonErrorPayload(
@@ -172,41 +128,8 @@ actor DaemonRuntimeCoordinator {
     }
 
     func shutdown() async {
-        telemetryTask?.cancel()
-        telemetryTask = nil
-        delayedTelemetryTask?.cancel()
-        delayedTelemetryTask = nil
-        telemetryClients.removeAll()
         ioKitRefreshHandler = nil
         await managementEngine?.shutdown()
-    }
-
-    private func startTelemetryLoop() {
-        telemetryTask = Task { [weak self, telemetryInterval] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: telemetryInterval)
-                guard !Task.isCancelled, let self else { return }
-                await self.refreshTelemetryAndPublish()
-            }
-        }
-    }
-
-    private func scheduleDelayedTelemetryRefresh() {
-        delayedTelemetryTask?.cancel()
-        delayedTelemetryTask = Task { [weak self, delayedTelemetryRefreshDelay] in
-            try? await Task.sleep(for: delayedTelemetryRefreshDelay)
-            guard !Task.isCancelled, let self else { return }
-            await self.finishDelayedTelemetryRefresh()
-        }
-    }
-
-    private func finishDelayedTelemetryRefresh() async {
-        delayedTelemetryTask = nil
-        let powerSourceChanged = await refreshIOKitSnapshot(reason: .hardwareRefresh)
-        await refreshTelemetryAndPublish()
-        if powerSourceChanged {
-            await reconcilePolicy(on: .powerSource)
-        }
     }
 
     private func reconcilePolicy(on event: DaemonPolicyEvent) async {
@@ -218,21 +141,10 @@ actor DaemonRuntimeCoordinator {
     private func publishPolicyReconcileResult(_ result: DaemonPolicyReconcileResult) async {
         guard result.shouldPublishSnapshot else { return }
         if result.powerPathChanged {
-            await refreshTelemetryAfterPolicyReconcile()
+            await publishSnapshotAfterPolicyReconcile()
         } else {
             await publishCurrentSnapshot()
         }
-    }
-
-    private func stopTelemetryLoopIfUnused() {
-        guard telemetryClients.isEmpty else { return }
-        telemetryTask?.cancel()
-        telemetryTask = nil
-    }
-
-    private func sampleTelemetry() async {
-        let reading = await hardware.readTelemetry()
-        _ = await stateStore.updateTelemetry(reading)
     }
 
     private func refreshHardwareState() async {

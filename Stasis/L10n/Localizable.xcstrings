@@ -45,6 +45,7 @@
       }
     },
     "Adapter control is not supported on this device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -207,7 +208,7 @@
         }
       }
     },
-    "Automatic discharge requires adapter control support from this Mac." : {
+    "Automatic discharge is unavailable in this charge-control mode." : {
 
     },
     "Automatically resume charging when the battery drops below the threshold relative to your charge limit." : {
@@ -219,6 +220,9 @@
           }
         }
       }
+    },
+    "Background Service" : {
+
     },
     "Battery" : {
       "localizations" : {
@@ -529,6 +533,9 @@
     "Calculating..." : {
 
     },
+    "Cancel" : {
+
+    },
     "Charge limit" : {
       "localizations" : {
         "de" : {
@@ -701,6 +708,9 @@
           }
         }
       }
+    },
+    "Charging management will stop, and your Mac’s charging controls will return to their default state. You can enable it again at any time." : {
+
     },
     "Charging Paused" : {
       "localizations" : {
@@ -950,6 +960,15 @@
           }
         }
       }
+    },
+    "Controls charging while Stasis isn't open." : {
+
+    },
+    "Couldn’t remove the background service." : {
+
+    },
+    "Couldn’t save battery reading settings." : {
+
     },
     "Cycle count" : {
       "localizations" : {
@@ -1234,7 +1253,10 @@
         }
       }
     },
-    "Fine-tune battery readings and maintenance behavior." : {
+    "Fine-tune battery readings and charging behavior." : {
+
+    },
+    "Firmware charge limits continue to work during sleep without a legacy sleep assertion." : {
 
     },
     "Force Discharge" : {
@@ -2200,6 +2222,18 @@
     "Reconnect" : {
 
     },
+    "Remove" : {
+
+    },
+    "Remove Background Service?" : {
+
+    },
+    "Remove…" : {
+
+    },
+    "Removing…" : {
+
+    },
     "Restart the app when Settings closes" : {
 
     },
@@ -2294,6 +2328,9 @@
           }
         }
       }
+    },
+    "Sleep prevention is unavailable in this charge-control mode." : {
+
     },
     "Startup" : {
       "localizations" : {
@@ -2463,6 +2500,9 @@
           }
         }
       }
+    },
+    "The daemon only enables this feature when direct charging and adapter control are both supported." : {
+
     },
     "Threshold below limit" : {
       "localizations" : {

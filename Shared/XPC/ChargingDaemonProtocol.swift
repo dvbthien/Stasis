@@ -32,11 +32,6 @@ import Foundation
         reply: @escaping @Sendable (Data?, String?) -> Void
     )
 
-    func setTelemetryActive(
-        _ active: Bool,
-        reply: @escaping @Sendable (Bool) -> Void
-    )
-
     func prepareForUninstall(
         authData: Data?,
         reply: @escaping @Sendable (Bool, String?) -> Void

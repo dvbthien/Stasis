@@ -126,15 +126,6 @@ class ChargingDaemonManager {
     }
   }
 
-  func setTelemetryActive(_ active: Bool) async throws {
-    try await executeCommand(active ? "Enable daemon telemetry" : "Disable daemon telemetry") {
-      helper, reply in
-      helper.setTelemetryActive(active) { success in
-        reply(success, success ? nil : "Daemon rejected telemetry demand")
-      }
-    }
-  }
-
   func synchronizeChargingSettings(_ settings: DaemonSettings) async throws -> DaemonSettingsState {
     let payload = try DaemonPayloadCodec.encode(settings)
     try await executeCommand("Synchronize daemon charging settings") { [weak self] helper, reply in

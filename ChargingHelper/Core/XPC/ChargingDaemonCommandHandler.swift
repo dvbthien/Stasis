@@ -7,7 +7,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
     private let capabilities: DaemonCapabilities
     private let daemonVersion: String
     private let clients: DaemonClientRegistry
-    private let clientID: UUID
 
     init(
         settingsStore: DaemonSettingsStore,
@@ -15,8 +14,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         runtime: DaemonRuntimeCoordinator,
         capabilities: DaemonCapabilities,
         daemonVersion: String,
-        clients: DaemonClientRegistry,
-        clientID: UUID = UUID()
+        clients: DaemonClientRegistry
     ) {
         self.settingsStore = settingsStore
         self.stateStore = stateStore
@@ -24,25 +22,20 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         self.capabilities = capabilities
         self.daemonVersion = daemonVersion
         self.clients = clients
-        self.clientID = clientID
     }
 
-    func scoped(to clientID: UUID) -> ChargingDaemonCommandHandler {
+    func scoped(to _: UUID) -> ChargingDaemonCommandHandler {
         ChargingDaemonCommandHandler(
             settingsStore: settingsStore,
             stateStore: stateStore,
             runtime: runtime,
             capabilities: capabilities,
             daemonVersion: daemonVersion,
-            clients: clients,
-            clientID: clientID
+            clients: clients
         )
     }
 
     func connectionInvalidated() {
-        Task { [runtime, clientID] in
-            await runtime.clientDisconnected(clientID)
-        }
     }
 
     func checkHealth(reply: @escaping @Sendable (Data?, String?) -> Void) {
@@ -99,16 +92,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
     ) {
         respond(reply: reply) { [runtime] in
             try await runtime.setForceDischarge(enabled)
-        }
-    }
-
-    func setTelemetryActive(
-        _ active: Bool,
-        reply: @escaping @Sendable (Bool) -> Void
-    ) {
-        Task { [runtime, clientID] in
-            await runtime.setTelemetryActive(active, for: clientID)
-            reply(true)
         }
     }
 

@@ -85,37 +85,8 @@ actor DaemonStateStore {
     func updatePowerSource(_ update: DaemonPowerSourceUpdate) -> Bool {
         let oldBattery = battery
         let oldAdapter = adapter
-        let telemetry = DaemonTelemetryReading(
-            batteryVoltage: battery.voltage,
-            batteryCurrent: battery.current,
-            batteryPower: battery.power,
-            adapterVoltage: adapter.voltage,
-            adapterCurrent: adapter.current,
-            adapterPower: adapter.power
-        )
-
         battery = update.battery
         adapter = update.adapter
-        updateTelemetry(telemetry)
-        return battery != oldBattery || adapter != oldAdapter
-    }
-
-    @discardableResult
-    func updateTelemetry(_ reading: DaemonTelemetryReading) -> Bool {
-        let oldBattery = battery
-        let oldAdapter = adapter
-
-        battery.voltage = reading.batteryVoltage
-        battery.current = reading.batteryCurrent
-        battery.power = reading.batteryPower
-        adapter.voltage = reading.adapterVoltage
-        adapter.current = reading.adapterCurrent
-        adapter.power = reading.adapterPower
-
-        if adapter.physicallyConnected, reading.batteryAvailable {
-            battery.isCharging = reading.batteryPower > 0
-        }
-
         return battery != oldBattery || adapter != oldAdapter
     }
 

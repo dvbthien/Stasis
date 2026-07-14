@@ -226,10 +226,6 @@ private actor MockDaemonHardwareController: DaemonHardwareControlling {
         )
     }
 
-    func readTelemetry() async -> DaemonTelemetryReading {
-        DaemonTelemetryReading()
-    }
-
     func writeCount() -> Int {
         writes
     }

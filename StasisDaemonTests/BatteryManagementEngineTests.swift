@@ -101,29 +101,6 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertFalse(containsLegacyWrite)
     }
 
-    func testIdleEngineDoesNotRefreshTelemetryWithoutEventOrMenuDemand() async throws {
-        let fixture = try await makeFixture(
-            mode: .legacy,
-            settings: settings(automaticDischarge: false),
-            telemetryReadings: [
-                telemetry(batteryPower: -4, adapterPower: 0),
-                telemetry(batteryPower: 8, adapterPower: 45),
-            ]
-        )
-
-        await fixture.runtime.handlePowerSourceUpdate(update(percentage: 60))
-        try await Task.sleep(for: .milliseconds(55))
-
-        let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
-        let telemetryActive = await fixture.runtime.isTelemetryActive()
-        let telemetryReads = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(snapshot.battery.power, -4)
-        XCTAssertFalse(snapshot.battery.isCharging)
-        XCTAssertEqual(snapshot.adapter.power, 0)
-        XCTAssertEqual(telemetryReads, 1)
-        XCTAssertFalse(telemetryActive)
-    }
-
     func testFirmwareWakeReconcilesLimitsWithoutLegacySleepHooks() async throws {
         let fixture = try await makeFixture(
             mode: .firmware,
@@ -255,18 +232,12 @@ final class BatteryManagementEngineTests: XCTestCase {
         XCTAssertFalse(adapterEnabled)
     }
 
-    func testAutomaticDischargeRefreshesDelayedTelemetryWithoutMenuDemand() async throws {
+    func testAutomaticDischargeSettingsChangeWritesPolicyWithoutTelemetryDemand() async throws {
         let initialSettings = settings(automaticDischarge: false)
         let fixture = try await makeFixture(
             mode: .legacy,
             settings: initialSettings,
-            delayedTelemetryRefreshDelay: .milliseconds(20),
-            initialChargingEnabled: false,
-            telemetryReadings: [
-                telemetry(batteryPower: 11, adapterPower: 45),
-                telemetry(batteryPower: 11, adapterPower: 45),
-                telemetry(batteryPower: -8, adapterPower: 0),
-            ]
+            initialChargingEnabled: false
         )
         await fixture.runtime.handlePowerSourceUpdate(update(percentage: 81))
 
@@ -275,22 +246,12 @@ final class BatteryManagementEngineTests: XCTestCase {
         _ = try await fixture.settingsStore.setSettings(automaticDischargeSettings)
         await fixture.runtime.reconcilePolicyAfterSettingsChange()
 
-        let immediateSnapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
-        let immediateTelemetryReadCount = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(immediateSnapshot.battery.power, 11)
-        XCTAssertTrue(immediateSnapshot.battery.isCharging)
-        XCTAssertEqual(immediateTelemetryReadCount, 2)
-
-        try await Task.sleep(for: .milliseconds(60))
-
-        let delayedSnapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
-        let telemetryReadCount = await fixture.hardware.telemetryReadCount()
-        let telemetryActive = await fixture.runtime.isTelemetryActive()
-        XCTAssertEqual(delayedSnapshot.battery.power, -8)
-        XCTAssertEqual(delayedSnapshot.adapter.power, 0)
-        XCTAssertFalse(delayedSnapshot.battery.isCharging)
-        XCTAssertEqual(telemetryReadCount, 3)
-        XCTAssertFalse(telemetryActive)
+        let chargingEnabled = await fixture.hardware.isChargingEnabled()
+        let adapterEnabled = await fixture.hardware.isAdapterEnabled()
+        let operations = await fixture.hardware.operations()
+        XCTAssertFalse(chargingEnabled)
+        XCTAssertFalse(adapterEnabled)
+        XCTAssertTrue(operations.contains(.adapter(false)))
     }
 
     func testLegacySleepAssertionFollowsChargingDecision() async throws {
@@ -472,9 +433,7 @@ final class BatteryManagementEngineTests: XCTestCase {
     private func makeFixture(
         mode: ChargeControlMode,
         settings: DaemonSettings,
-        delayedTelemetryRefreshDelay: Duration = .seconds(3),
-        initialChargingEnabled: Bool = true,
-        telemetryReadings: [DaemonTelemetryReading] = []
+        initialChargingEnabled: Bool = true
     ) async throws -> (
         runtime: DaemonRuntimeCoordinator,
         hardware: EngineMockHardware,
@@ -497,16 +456,14 @@ final class BatteryManagementEngineTests: XCTestCase {
         )
         let hardware = EngineMockHardware(
             mode: mode,
-            initialChargingEnabled: initialChargingEnabled,
-            telemetryReadings: telemetryReadings
+            initialChargingEnabled: initialChargingEnabled
         )
         let clients = DaemonClientRegistry()
         let runtime = DaemonRuntimeCoordinator(
             settingsStore: settingsStore,
             stateStore: stateStore,
             hardware: hardware,
-            clients: clients,
-            delayedTelemetryRefreshDelay: delayedTelemetryRefreshDelay
+            clients: clients
         )
         let sleepAssertion = MockSleepAssertion()
         let engine = BatteryManagementEngine(
@@ -556,21 +513,6 @@ final class BatteryManagementEngineTests: XCTestCase {
         )
     }
 
-    private func telemetry(
-        batteryPower: Double,
-        adapterPower: Double
-    ) -> DaemonTelemetryReading {
-        DaemonTelemetryReading(
-            batteryAvailable: true,
-            adapterAvailable: true,
-            batteryVoltage: 12.5,
-            batteryCurrent: batteryPower / 12.5,
-            batteryPower: batteryPower,
-            adapterVoltage: adapterPower == 0 ? 0 : 20,
-            adapterCurrent: adapterPower / 20,
-            adapterPower: adapterPower
-        )
-    }
 }
 
 private enum EngineHardwareOperation: Equatable, Sendable {
@@ -592,17 +534,12 @@ private actor EngineMockHardware: DaemonHardwareControlling {
         lower: 0,
         upper: 100
     )
-    private let telemetryReadings: [DaemonTelemetryReading]
-    private var telemetryReads = 0
-
     init(
         mode: ChargeControlMode,
-        initialChargingEnabled: Bool,
-        telemetryReadings: [DaemonTelemetryReading]
+        initialChargingEnabled: Bool
     ) {
         self.mode = mode
         chargingEnabled = initialChargingEnabled
-        self.telemetryReadings = telemetryReadings
     }
 
     func setChargingEnabled(_ enabled: Bool) throws -> Bool {
@@ -654,19 +591,8 @@ private actor EngineMockHardware: DaemonHardwareControlling {
         )
     }
 
-    func readTelemetry() -> DaemonTelemetryReading {
-        telemetryReads += 1
-        guard !telemetryReadings.isEmpty else { return DaemonTelemetryReading() }
-        let index = min(telemetryReads - 1, telemetryReadings.count - 1)
-        return telemetryReadings[index]
-    }
-
     func operations() -> [EngineHardwareOperation] {
         recordedOperations
-    }
-
-    func telemetryReadCount() -> Int {
-        telemetryReads
     }
 
     func isChargingEnabled() -> Bool {

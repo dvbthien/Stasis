@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 
 final class DaemonRuntimeCoordinatorTests: XCTestCase {
-    func testIOKitUpdatePublishesImmediatelyWhilePreservingCachedTelemetry() async throws {
+    func testIOKitUpdatePublishesImmediately() async throws {
         let fixture = try makeFixture()
         let client = SnapshotCaptureClient()
         fixture.clients.add(client, id: UUID())
@@ -28,13 +28,11 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
         let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
         XCTAssertEqual(snapshot.battery.displayedPercentage, 64)
         XCTAssertEqual(snapshot.battery.hardwarePercentage, 62)
-        XCTAssertEqual(snapshot.battery.voltage, 12.5)
-        XCTAssertEqual(snapshot.battery.power, 11)
+        XCTAssertEqual(snapshot.battery.voltage, 0)
+        XCTAssertEqual(snapshot.battery.power, 0)
         XCTAssertFalse(snapshot.battery.isCharging)
-        XCTAssertEqual(snapshot.adapter.power, 45)
-        let telemetryReads = await fixture.hardware.telemetryReadCount()
+        XCTAssertEqual(snapshot.adapter.power, 0)
         let hardwareStateReads = await fixture.hardware.hardwareStateReadCount()
-        XCTAssertEqual(telemetryReads, 1)
         XCTAssertEqual(hardwareStateReads, 1)
 
         let published = try XCTUnwrap(client.latestSnapshot())
@@ -56,7 +54,7 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.runtime.status, .ready)
     }
 
-    func testUnavailableSMCTelemetryPreservesIOKitChargingState() async throws {
+    func testPowerSourceUpdatePreservesIOKitChargingState() async throws {
         let capabilities = DaemonCapabilities(
             chargeControlMode: .legacy,
             adapterControl: true,
@@ -78,15 +76,14 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
                 reason: .interestNotification
             )
         )
-        await stateStore.updateTelemetry(DaemonTelemetryReading())
 
         let settingsState = await settingsStore.state()
         let snapshot = await stateStore.snapshot(settingsState: settingsState)
         XCTAssertTrue(snapshot.battery.isCharging)
     }
 
-    func testAdapterTransitionPublishesImmediatelyThenRefreshesTelemetryLater() async throws {
-        let fixture = try makeFixture(delayedTelemetryRefreshDelay: .milliseconds(20))
+    func testAdapterTransitionPublishesImmediatelyWithoutTelemetryFollowUp() async throws {
+        let fixture = try makeFixture()
         let client = SnapshotCaptureClient()
         fixture.clients.add(client, id: UUID())
 
@@ -102,120 +99,17 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
         )
 
         let immediateSnapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
-        let immediateReads = await fixture.hardware.telemetryReadCount()
         XCTAssertFalse(immediateSnapshot.adapter.physicallyConnected)
-        XCTAssertEqual(immediateReads, 1)
         XCTAssertEqual(client.snapshotCount(), 2)
-
-        try await Task.sleep(for: .milliseconds(60))
-        let delayedReads = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(delayedReads, 2)
-        XCTAssertEqual(client.snapshotCount(), 3)
     }
 
-    func testInterestUpdateWithoutAdapterTransitionRefreshesTelemetryFollowUp() async throws {
-        let fixture = try makeFixture(delayedTelemetryRefreshDelay: .milliseconds(20))
-        let client = SnapshotCaptureClient()
-        fixture.clients.add(client, id: UUID())
-
-        await fixture.runtime.handlePowerSourceUpdate(update(reason: .initial))
-        await fixture.runtime.handlePowerSourceUpdate(
-            DaemonPowerSourceUpdate(
-                battery: DaemonBatterySnapshot(displayedPercentage: 49),
-                adapter: DaemonAdapterSnapshot(physicallyConnected: true),
-                reason: .interestNotification
-            )
-        )
-
-        try await Task.sleep(for: .milliseconds(60))
-
-        let telemetryReads = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(telemetryReads, 2)
-        XCTAssertEqual(client.snapshotCount(), 3)
-    }
-
-    func testInterestUpdatesDebounceDelayedTelemetryRefresh() async throws {
-        let fixture = try makeFixture(delayedTelemetryRefreshDelay: .milliseconds(30))
-        let client = SnapshotCaptureClient()
-        fixture.clients.add(client, id: UUID())
-
-        await fixture.runtime.handlePowerSourceUpdate(update(reason: .initial))
-        await fixture.runtime.handlePowerSourceUpdate(update(reason: .interestNotification))
-        try await Task.sleep(for: .milliseconds(10))
-        await fixture.runtime.handlePowerSourceUpdate(update(reason: .interestNotification))
-
-        try await Task.sleep(for: .milliseconds(70))
-
-        let telemetryReads = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(telemetryReads, 2)
-        XCTAssertEqual(client.snapshotCount(), 4)
-    }
-
-    func testHardwareChangeGetsDelayedTelemetryFollowUp() async throws {
-        let fixture = try makeFixture(delayedTelemetryRefreshDelay: .milliseconds(20))
+    func testHardwareChangePublishesSingleRefreshedSnapshot() async throws {
+        let fixture = try makeFixture()
         let client = SnapshotCaptureClient()
         fixture.clients.add(client, id: UUID())
 
         await fixture.runtime.reconcilePolicyAfterHardwareCommand()
-        let immediateReads = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(immediateReads, 1)
         XCTAssertEqual(client.snapshotCount(), 1)
-
-        try await Task.sleep(for: .milliseconds(60))
-        let delayedReads = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(delayedReads, 2)
-        XCTAssertEqual(client.snapshotCount(), 2)
-    }
-
-    func testTelemetryLoopRemainsActiveUntilLastClientReleasesDemand() async throws {
-        let fixture = try makeFixture(telemetryInterval: .milliseconds(15))
-        let firstClient = UUID()
-        let secondClient = UUID()
-
-        await fixture.runtime.setTelemetryActive(true, for: firstClient)
-        await fixture.runtime.setTelemetryActive(true, for: secondClient)
-        try await Task.sleep(for: .milliseconds(55))
-
-        let activeAfterBothClients = await fixture.runtime.isTelemetryActive()
-        XCTAssertTrue(activeAfterBothClients)
-        let activeReadCount = await fixture.hardware.telemetryReadCount()
-        XCTAssertGreaterThanOrEqual(activeReadCount, 3)
-
-        await fixture.runtime.setTelemetryActive(false, for: firstClient)
-        let activeAfterFirstClient = await fixture.runtime.isTelemetryActive()
-        XCTAssertTrue(activeAfterFirstClient)
-
-        await fixture.runtime.clientDisconnected(secondClient)
-        let activeAfterDisconnect = await fixture.runtime.isTelemetryActive()
-        XCTAssertFalse(activeAfterDisconnect)
-        let stoppedReadCount = await fixture.hardware.telemetryReadCount()
-        try await Task.sleep(for: .milliseconds(45))
-        let finalReadCount = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(finalReadCount, stoppedReadCount)
-    }
-
-    func testFirstTelemetryClientGetsImmediateSnapshotWithoutDuplicatingLoop() async throws {
-        let fixture = try makeFixture()
-        let client = SnapshotCaptureClient()
-        let firstClientID = UUID()
-        let secondClientID = UUID()
-        fixture.clients.add(client, id: UUID())
-
-        await fixture.runtime.setTelemetryActive(true, for: firstClientID)
-
-        let initialReadCount = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(initialReadCount, 1)
-        XCTAssertEqual(client.snapshotCount(), 1)
-
-        await fixture.runtime.setTelemetryActive(true, for: firstClientID)
-        await fixture.runtime.setTelemetryActive(true, for: secondClientID)
-
-        let readCountAfterRepeatedDemand = await fixture.hardware.telemetryReadCount()
-        XCTAssertEqual(readCountAfterRepeatedDemand, 1)
-        XCTAssertEqual(client.snapshotCount(), 1)
-
-        await fixture.runtime.setTelemetryActive(false, for: firstClientID)
-        await fixture.runtime.setTelemetryActive(false, for: secondClientID)
     }
 
     func testSettingsChangeRefreshesIOKitSnapshotBeforePublishing() async throws {
@@ -246,19 +140,14 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
         XCTAssertFalse(snapshot.adapter.physicallyConnected)
     }
 
-    func testHardwareChangeRefreshesIOKitImmediatelyAndAfterSettleDelay() async throws {
-        let fixture = try makeFixture(delayedTelemetryRefreshDelay: .milliseconds(20))
+    func testHardwareChangeRefreshesIOKitImmediatelyOnly() async throws {
+        let fixture = try makeFixture()
         let source = RuntimeIOKitRefreshSource(updates: [
             DaemonPowerSourceUpdate(
                 battery: DaemonBatterySnapshot(displayedPercentage: 60),
                 adapter: DaemonAdapterSnapshot(physicallyConnected: true),
                 reason: .hardwareRefresh
-            ),
-            DaemonPowerSourceUpdate(
-                battery: DaemonBatterySnapshot(displayedPercentage: 61),
-                adapter: DaemonAdapterSnapshot(physicallyConnected: true),
-                reason: .hardwareRefresh
-            ),
+            )
         ])
         await fixture.runtime.installIOKitRefreshHandler { reason in
             await source.refresh(reason: reason)
@@ -268,18 +157,11 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
         let immediateSnapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
         XCTAssertEqual(immediateSnapshot.battery.displayedPercentage, 60)
 
-        try await Task.sleep(for: .milliseconds(60))
-
-        let delayedSnapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
         let reasons = await source.requestedReasons()
-        XCTAssertEqual(delayedSnapshot.battery.displayedPercentage, 61)
-        XCTAssertEqual(reasons, [.hardwareRefresh, .hardwareRefresh])
+        XCTAssertEqual(reasons, [.hardwareRefresh])
     }
 
-    private func makeFixture(
-        telemetryInterval: Duration = .seconds(1),
-        delayedTelemetryRefreshDelay: Duration = .seconds(3)
-    ) throws -> (
+    private func makeFixture() throws -> (
         runtime: DaemonRuntimeCoordinator,
         hardware: RuntimeMockHardware,
         clients: DaemonClientRegistry
@@ -303,9 +185,7 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
             settingsStore: settingsStore,
             stateStore: stateStore,
             hardware: hardware,
-            clients: clients,
-            telemetryInterval: telemetryInterval,
-            delayedTelemetryRefreshDelay: delayedTelemetryRefreshDelay
+            clients: clients
         )
         return (runtime, hardware, clients)
     }
@@ -320,7 +200,6 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
 }
 
 private actor RuntimeMockHardware: DaemonHardwareControlling {
-    private var telemetryReads = 0
     private var hardwareStateReads = 0
 
     func setChargingEnabled(_ enabled: Bool) async throws -> Bool { false }
@@ -334,24 +213,6 @@ private actor RuntimeMockHardware: DaemonHardwareControlling {
             forceDischarging: false,
             magSafeLEDStateRawValue: 3
         )
-    }
-
-    func readTelemetry() async -> DaemonTelemetryReading {
-        telemetryReads += 1
-        return DaemonTelemetryReading(
-            batteryAvailable: true,
-            adapterAvailable: true,
-            batteryVoltage: 12.5,
-            batteryCurrent: 0.88,
-            batteryPower: 11,
-            adapterVoltage: 20,
-            adapterCurrent: 2.25,
-            adapterPower: 45
-        )
-    }
-
-    func telemetryReadCount() -> Int {
-        telemetryReads
     }
 
     func hardwareStateReadCount() -> Int {
