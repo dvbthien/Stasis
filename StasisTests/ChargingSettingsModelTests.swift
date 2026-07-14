@@ -5,22 +5,24 @@ import XCTest
 
 @MainActor
 final class ChargingSettingsModelTests: XCTestCase {
-    func testDoesNotCreatePlaceholderBeforeDaemonLoads() {
+    func testDoesNotCreatePlaceholderBeforeDaemonLoads() async {
         let client = MockChargingSettingsManager(loaded: false)
         let model = ChargingSettingsModel(client: client)
+        defer { model.stop() }
 
-        XCTAssertNil(model.management)
-        XCTAssertNil(model.threshold)
-        XCTAssertNil(model.batteryPercentage)
+        XCTAssertNil(model.managementState.settings)
+        XCTAssertNil(model.thresholdState.settings)
+        XCTAssertNil(model.batteryPercentageState.settings)
         XCTAssertFalse(model.isLoaded)
     }
 
-    func testLoadsEachGroupFromDaemon() {
+    func testLoadsEachGroupFromDaemon() async {
         let model = ChargingSettingsModel(client: MockChargingSettingsManager())
+        defer { model.stop() }
 
         XCTAssertTrue(model.isLoaded)
-        XCTAssertEqual(model.threshold?.chargeLimit, 80)
-        XCTAssertEqual(model.batteryPercentage?.useHardwarePercentage, false)
+        XCTAssertEqual(model.thresholdState.settings?.chargeLimit, 80)
+        XCTAssertEqual(model.batteryPercentageState.settings?.useHardwarePercentage, false)
     }
 
     func testTracksDedicatedCapabilitiesProperty() async {
@@ -74,17 +76,82 @@ final class ChargingSettingsModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
-    func testSliderDebouncesThresholdWrites() async {
+    func testThresholdCommitSendsOneWrite() async {
         let client = MockChargingSettingsManager()
-        let model = ChargingSettingsModel(client: client, sliderDebounce: .milliseconds(20))
+        let model = ChargingSettingsModel(client: client)
 
-        model.updateChargingThreshold(debounced: true) { $0.chargeLimit = 85 }
-        model.updateChargingThreshold(debounced: true) { $0.chargeLimit = 90 }
-        try? await Task.sleep(for: .milliseconds(80))
+        model.thresholdState.setChargeLimit(90)
         await waitForSaves(model)
 
         XCTAssertEqual(client.thresholdWrites.count, 1)
         XCTAssertEqual(client.thresholdWrites.first?.chargeLimit, 90)
+    }
+
+    func testThresholdInvariantIsAppliedWithinItsGroup() async {
+        let client = MockChargingSettingsManager()
+        client.chargingThresholdSettings = .init(
+            chargeLimit: 80,
+            sailingModeEnabled: true,
+            sailingDelta: 20
+        )
+        let model = ChargingSettingsModel(client: client)
+
+        model.thresholdState.setChargeLimit(50)
+        await waitForSaves(model)
+
+        XCTAssertEqual(model.threshold?.chargeLimit, 50)
+        XCTAssertEqual(model.threshold?.sailingDelta, 0)
+        XCTAssertEqual(model.threshold?.sailingModeEnabled, false)
+    }
+
+    func testSailingModeCanBeReenabledAfterChargeLimitWasSetToFifty() async {
+        let client = MockChargingSettingsManager()
+        let model = ChargingSettingsModel(client: client)
+        defer { model.stop() }
+
+        model.thresholdState.setChargeLimit(50)
+        await waitForSaves(model)
+        XCTAssertEqual(model.threshold?.chargeLimit, 50)
+        XCTAssertFalse(model.threshold?.sailingModeEnabled ?? true)
+        XCTAssertEqual(model.threshold?.sailingDelta, 0)
+
+        model.thresholdState.setChargeLimit(80)
+        await waitForSaves(model)
+        model.thresholdState.setSailingEnabled(true)
+        await waitForSaves(model)
+
+        XCTAssertEqual(model.threshold?.chargeLimit, 80)
+        XCTAssertTrue(model.threshold?.sailingModeEnabled ?? false)
+        XCTAssertEqual(model.threshold?.sailingDelta, 5)
+        XCTAssertEqual(
+            client.thresholdWrites.last,
+            .init(chargeLimit: 80, sailingModeEnabled: true, sailingDelta: 5)
+        )
+    }
+
+    func testRapidChangesAreSerializedAndCoalescedToLatestValue() async {
+        var writes: [Int] = []
+        let state = ThresholdSettingsState(
+            initialSettings: .init(),
+            saveOperation: { value in
+                writes.append(value.chargeLimit)
+                if value.chargeLimit == 85 {
+                    try? await Task.sleep(for: .milliseconds(40))
+                }
+                return value
+            }
+        )
+
+        state.setChargeLimit(85)
+        state.setChargeLimit(90)
+        state.setChargeLimit(95)
+
+        for _ in 0..<100 where state.isSaving {
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+
+        XCTAssertEqual(writes, [85, 95])
+        XCTAssertEqual(state.settings?.chargeLimit, 95)
     }
 
     func testDisableBeforeUninstallPersistsManagementOff() async throws {

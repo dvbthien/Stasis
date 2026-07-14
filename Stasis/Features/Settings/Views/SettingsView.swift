@@ -48,7 +48,9 @@ struct SettingsView: View {
             settingsModel: chargingSettingsModel
           )
         case .advanced:
-          AdvancedSettingsView(chargingSettingsModel: chargingSettingsModel)
+          AdvancedSettingsView(
+            batteryPercentageState: chargingSettingsModel.batteryPercentageState
+          )
         }
       }
     }

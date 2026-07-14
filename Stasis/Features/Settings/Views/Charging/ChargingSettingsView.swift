@@ -73,10 +73,6 @@ struct ChargingSettingsView: View {
     settingsModel.capabilities?.magSafeLEDControl ?? fallbackCapabilities.magsafeLEDControl
   }
 
-  private var sailingResumePercentage: Int {
-    (settingsModel.threshold?.chargeLimit ?? 80) - (settingsModel.threshold?.sailingDelta ?? 5)
-  }
-
   private var helperStatus: ChargingHelperStatus {
     previewState?.helperStatus ?? helperManager.helperStatus
   }
@@ -87,12 +83,12 @@ struct ChargingSettingsView: View {
 
   private var isManageChargingOn: Bool {
     guard hasAnyControl else { return false }
-    return previewState?.manageCharging ?? settingsModel.management?.isEnabled ?? false
+    return previewState?.manageCharging ?? settingsModel.managementState.settings?.isEnabled ?? false
   }
 
   private var isCheckingChargingDaemon: Bool {
     previewState.map { $0.isVerifying || $0.isUninstalling }
-      ?? (chargingController.flowState.isLoading || settingsModel.isSaving)
+      ?? (chargingController.flowState.isLoading || settingsModel.managementState.isSaving)
   }
 
   private var isUninstalling: Bool {
@@ -104,19 +100,12 @@ struct ChargingSettingsView: View {
       ?? chargingController.flowState.uninstallErrorMessage
   }
 
-  private var displayedChargingControlError: String? {
-    previewState?.errorMessage
-      ?? settingsModel.errorMessage
-      ?? chargingController.flowState.message
-  }
-
   private var displayedStatusMessage: String? {
-    displayedChargingControlError
+    previewState?.errorMessage ?? chargingController.flowState.message
   }
 
   private var shouldShowChargingControlError: Bool {
-    guard displayedStatusMessage != nil else { return false }
-    return helperStatus != .requiresApproval
+    helperStatus != .requiresApproval
   }
 
   private var shouldShowApprovalPrompt: Bool {
@@ -127,128 +116,17 @@ struct ChargingSettingsView: View {
   private var isChargingDaemonReady: Bool {
     helperStatus == .installed
       && connectionStatus == .connected
-      && settingsModel.management != nil
+      && settingsModel.managementState.settings != nil
       && capabilitiesResolved
       && !chargingController.flowState.isLoading
   }
 
   private var shouldShowChargingControls: Bool {
-    isManageChargingOn && isChargingDaemonReady && settingsModel.threshold != nil
+    isManageChargingOn && isChargingDaemonReady
   }
 
   private var shouldShowLoadedChargingGroups: Bool {
     isManageChargingOn && isChargingDaemonReady
-  }
-
-  private var manageChargingBinding: Binding<Bool> {
-    Binding(
-      get: { isManageChargingOn },
-      set: { enabled in
-        guard previewState == nil else { return }
-        toggleManageCharging(enabled)
-      }
-    )
-  }
-
-  private var chargeLimitBinding: Binding<Int> {
-    Binding(
-      get: { settingsModel.threshold?.chargeLimit ?? 80 },
-      set: { value in
-        settingsModel.updateChargingThreshold(debounced: true) {
-          $0.chargeLimit = value
-          if value - $0.sailingDelta < 50 {
-            $0.sailingDelta = max(0, value - 50)
-          }
-          if $0.sailingDelta == 0 {
-            $0.sailingModeEnabled = false
-          }
-        }
-      }
-    )
-  }
-
-  private var automaticDischargeBinding: Binding<Bool> {
-    Binding(
-      get: {
-        automaticDischargeSupported && settingsModel.automaticDischarge?.isEnabled == true
-      },
-      set: {
-        settingsModel.setAutomaticDischargeEnabled(automaticDischargeSupported ? $0 : false)
-      }
-    )
-  }
-
-  private var sailingModeBinding: Binding<Bool> {
-    Binding(
-      get: { sailingModeSupported && settingsModel.threshold?.sailingModeEnabled == true },
-      set: {
-        let value = sailingModeSupported ? $0 : false
-        settingsModel.updateChargingThreshold { $0.sailingModeEnabled = value }
-      }
-    )
-  }
-
-  private var sailingModeLimitBinding: Binding<Int> {
-    Binding(
-      get: { settingsModel.threshold?.sailingDelta ?? 5 },
-      set: { value in
-        settingsModel.updateChargingThreshold(debounced: true) {
-          $0.sailingDelta = min(value, max(0, $0.chargeLimit - 50))
-        }
-      }
-    )
-  }
-
-  private var sleepPreventionBinding: Binding<Bool> {
-    Binding(
-      get: {
-        sleepPreventionSupported && settingsModel.sleepPrevention?.isEnabled == true
-      },
-      set: {
-        settingsModel.setSleepPreventionEnabled(sleepPreventionSupported ? $0 : false)
-      }
-    )
-  }
-
-  private var heatProtectionModeBinding: Binding<Bool> {
-    Binding(
-      get: {
-        heatProtectionSupported && settingsModel.heatProtection?.isEnabled == true
-      },
-      set: {
-        let value = heatProtectionSupported ? $0 : false
-        settingsModel.updateHeatProtection { $0.isEnabled = value }
-      }
-    )
-  }
-
-  private var heatProtectionLimitBinding: Binding<Int> {
-    Binding(
-      get: { settingsModel.heatProtection?.temperatureLimit ?? 40 },
-      set: { value in settingsModel.updateHeatProtection(debounced: true) { $0.temperatureLimit = value } }
-    )
-  }
-
-  private var magSafeLEDBinding: Binding<Bool> {
-    Binding(
-      get: { magSafeLEDSupported && settingsModel.magSafeLED?.isEnabled == true },
-      set: {
-        let value = magSafeLEDSupported ? $0 : false
-        settingsModel.updateMagSafeLED { $0.isEnabled = value }
-      }
-    )
-  }
-
-  private var heatProtectionLEDStateBinding: Binding<MagSafeLEDState> {
-    Binding(
-      get: {
-        settingsModel.magSafeLED?.heatProtectionState ?? .blinkOrangeSlow
-      },
-      set: {
-        let value = $0
-        settingsModel.updateMagSafeLED { $0.heatProtectionState = value }
-      }
-    )
   }
 
   var body: some View {
@@ -259,8 +137,9 @@ struct ChargingSettingsView: View {
       )
 
       ChargingManagementSection(
-        manageCharging: manageChargingBinding,
-        chargeLimit: chargeLimitBinding,
+        managementState: settingsModel.managementState,
+        thresholdState: settingsModel.thresholdState,
+        previewManageCharging: previewState?.manageCharging,
         hasAnyControl: hasAnyControl,
         shouldShowChargingControls: shouldShowChargingControls,
         isCheckingChargingDaemon: isCheckingChargingDaemon,
@@ -269,6 +148,7 @@ struct ChargingSettingsView: View {
         shouldShowChargingControlError: shouldShowChargingControlError,
         helperStatus: helperStatus,
         connectionStatus: connectionStatus,
+        setManageCharging: setManageCharging,
         openApprovalSettings: runPreviewSafe(openApprovalSettings),
         checkApprovalStatus: runPreviewSafe(checkApprovalStatus),
         requestEnableChargingManagement: runPreviewSafe(requestEnableChargingManagement),
@@ -276,44 +156,32 @@ struct ChargingSettingsView: View {
       )
 
       if shouldShowLoadedChargingGroups {
-        if settingsModel.automaticDischarge != nil {
         ChargingDischargeSection(
-          automaticDischarge: automaticDischargeBinding,
+          state: settingsModel.automaticDischargeState,
           isSupported: automaticDischargeSupported
         )
-        }
 
-        if settingsModel.sleepPrevention != nil {
         ChargingSleepPreventionSection(
-          disableSleepUntilChargeLimit: sleepPreventionBinding,
+          state: settingsModel.sleepPreventionState,
           isSupported: sleepPreventionSupported
         )
-        }
 
-        if settingsModel.threshold != nil {
         ChargingSailingModeSection(
-          sailingMode: sailingModeBinding,
-          sailingModeLimit: sailingModeLimitBinding,
-          sailingResumePercentage: sailingResumePercentage,
-          hasChargingControl: sailingModeSupported && (settingsModel.threshold?.chargeLimit ?? 50) > 50
+          state: settingsModel.thresholdState,
+          isSupported: sailingModeSupported
         )
-        }
 
-        if settingsModel.heatProtection != nil {
         ChargingHeatProtectionSection(
-          enableHeatProtectionMode: heatProtectionModeBinding,
-          heatProtectionLimit: heatProtectionLimitBinding,
+          state: settingsModel.heatProtectionState,
           hasChargingControl: heatProtectionSupported
         )
-        }
 
-        if hasMagSafe && settingsModel.magSafeLED != nil {
+        if hasMagSafe {
           ChargingMagSafeLEDSection(
-            manageMagSafeLED: magSafeLEDBinding,
-            heatProtectionMagSafeLEDState: heatProtectionLEDStateBinding,
+            state: settingsModel.magSafeLEDState,
+            heatProtectionState: settingsModel.heatProtectionState,
             hasChargingControl: heatProtectionSupported,
-            hasMagSafeLEDControl: magSafeLEDSupported,
-            isHeatProtectionEnabled: settingsModel.heatProtection?.isEnabled == true
+            hasMagSafeLEDControl: magSafeLEDSupported
           )
         }
       }
@@ -329,11 +197,8 @@ struct ChargingSettingsView: View {
       }
     }
     .settingsFormLayout()
-    .disabled(previewState == nil && (settingsModel.isSaving || isUninstalling))
+    .disabled(previewState == nil && isUninstalling)
     .animation(.default, value: isManageChargingOn)
-    .animation(.default, value: settingsModel.threshold?.sailingModeEnabled)
-    .animation(.default, value: settingsModel.heatProtection?.isEnabled)
-    .animation(.default, value: settingsModel.magSafeLED?.isEnabled)
     .animation(.default, value: helperStatus)
     .animation(.default, value: connectionStatus)
     .alert("Remove Background Service?", isPresented: $showsUninstallConfirmation) {
@@ -350,7 +215,7 @@ struct ChargingSettingsView: View {
       guard previewState == nil else { return }
       chargingController.reconcileOnAppear(
         hasAnyControl: hasAnyControl,
-        manageCharging: settingsModel.management?.isEnabled == true
+        manageCharging: settingsModel.managementState.settings?.isEnabled == true
       )
     }
     .onDisappear {
@@ -359,17 +224,20 @@ struct ChargingSettingsView: View {
     }
     .onChange(of: helperManager.helperStatus) { _, newStatus in
       guard previewState == nil else { return }
-      chargingController.handleHelperStatusChange(
-        newStatus
-      )
+      chargingController.handleHelperStatusChange(newStatus)
     }
     .onChange(of: helperManager.connectionStatus) { _, newStatus in
       guard previewState == nil else { return }
       chargingController.handleConnectionStatusChange(
         newStatus,
-        manageCharging: settingsModel.management?.isEnabled == true
+        manageCharging: settingsModel.managementState.settings?.isEnabled == true
       )
     }
+  }
+
+  private func setManageCharging(_ enabled: Bool) {
+    guard previewState == nil else { return }
+    toggleManageCharging(enabled)
   }
 
   private func runPreviewSafe(_ action: @escaping () -> Void) -> () -> Void {
@@ -380,18 +248,18 @@ struct ChargingSettingsView: View {
     if enabled {
       chargingController.requestEnable(
         hasAnyControl: hasAnyControl,
-        setManageCharging: { settingsModel.setManagementEnabled($0) }
+        setManageCharging: { settingsModel.managementState.setEnabled($0) }
       )
     } else {
       chargingController.disable(
-        setManageCharging: { settingsModel.setManagementEnabled($0) }
+        setManageCharging: { settingsModel.managementState.setEnabled($0) }
       )
     }
   }
 
   private func checkApprovalStatus() {
     chargingController.checkApprovalStatus(
-      setManageCharging: { settingsModel.setManagementEnabled($0) }
+      setManageCharging: { settingsModel.managementState.setEnabled($0) }
     )
   }
 
@@ -402,7 +270,7 @@ struct ChargingSettingsView: View {
   private func requestEnableChargingManagement() {
     chargingController.requestEnable(
       hasAnyControl: hasAnyControl,
-      setManageCharging: { settingsModel.setManagementEnabled($0) }
+      setManageCharging: { settingsModel.managementState.setEnabled($0) }
     )
   }
 

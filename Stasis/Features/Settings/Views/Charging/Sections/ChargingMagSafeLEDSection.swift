@@ -1,16 +1,34 @@
 import SwiftUI
 
 struct ChargingMagSafeLEDSection: View {
-  @Binding var manageMagSafeLED: Bool
-  @Binding var heatProtectionMagSafeLEDState: MagSafeLEDState
+  @Bindable var state: MagSafeLEDSettingsState
+  @Bindable var heatProtectionState: HeatProtectionSettingsState
+
   let hasChargingControl: Bool
   let hasMagSafeLEDControl: Bool
-  let isHeatProtectionEnabled: Bool
+
+  private var isEnabled: Binding<Bool> {
+    Binding(
+      get: { hasMagSafeLEDControl && state.settings?.isEnabled == true },
+      set: { state.setEnabled(hasMagSafeLEDControl ? $0 : false) }
+    )
+  }
+
+  private var selectedHeatProtectionState: Binding<MagSafeLEDState> {
+    Binding(
+      get: { state.settings?.heatProtectionState ?? .blinkOrangeSlow },
+      set: { state.setHeatProtectionState($0) }
+    )
+  }
 
   var body: some View {
     Section {
-      Toggle("Manage MagSafe LED", isOn: $manageMagSafeLED)
-        .disabled(!hasMagSafeLEDControl)
+      if state.settings != nil {
+        Toggle("Manage MagSafe LED", isOn: isEnabled)
+          .disabled(!hasMagSafeLEDControl)
+      } else {
+        ProgressView()
+      }
 
       if !hasMagSafeLEDControl {
         SettingsInlineMessage(
@@ -22,13 +40,13 @@ struct ChargingMagSafeLEDSection: View {
       }
 
       if hasMagSafeLEDControl,
-        manageMagSafeLED,
+        state.settings?.isEnabled == true,
         hasChargingControl,
-        isHeatProtectionEnabled
+        heatProtectionState.settings?.isEnabled == true
       {
         Picker(
           "LED during heat protection",
-          selection: $heatProtectionMagSafeLEDState
+          selection: selectedHeatProtectionState
         ) {
           Text("Off").tag(MagSafeLEDState.off)
           Text("Green").tag(MagSafeLEDState.green)
@@ -36,6 +54,13 @@ struct ChargingMagSafeLEDSection: View {
           Text("Blinking Orange Slow").tag(MagSafeLEDState.blinkOrangeSlow)
           Text("Blinking Orange Fast").tag(MagSafeLEDState.blinkOrangeFast)
         }
+      }
+
+      if let errorMessage = state.errorMessage {
+        SettingsInlineMessage(
+          title: Text("Couldn’t save MagSafe LED settings."),
+          message: Text(errorMessage)
+        )
       }
     } header: {
       Text("MagSafe LED Control")

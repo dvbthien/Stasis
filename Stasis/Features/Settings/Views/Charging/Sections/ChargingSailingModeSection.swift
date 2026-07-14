@@ -1,15 +1,39 @@
 import SwiftUI
 
 struct ChargingSailingModeSection: View {
-  @Binding var sailingMode: Bool
-  @Binding var sailingModeLimit: Int
-  let sailingResumePercentage: Int
-  let hasChargingControl: Bool
+  @Bindable var state: ThresholdSettingsState
+  @State private var draftSailingDelta = 5
+  @State private var isEditingSailingDelta = false
+
+  let isSupported: Bool
+
+  private var hasChargingControl: Bool {
+    isSupported && (state.settings?.chargeLimit ?? 50) > 50
+  }
+
+  private var sailingMode: Binding<Bool> {
+    Binding(
+      get: { hasChargingControl && state.settings?.sailingModeEnabled == true },
+      set: { state.setSailingEnabled(hasChargingControl ? $0 : false) }
+    )
+  }
+
+  private var sailingResumePercentage: Int {
+    (state.settings?.chargeLimit ?? 80) - draftSailingDelta
+  }
+
+  private var maximumSailingDelta: Int {
+    max(1, min(20, (state.settings?.chargeLimit ?? 80) - 50))
+  }
 
   var body: some View {
     Section {
-      Toggle("Enable sailing mode", isOn: $sailingMode)
-        .disabled(!hasChargingControl)
+      if state.settings != nil {
+        Toggle("Enable sailing mode", isOn: sailingMode)
+          .disabled(!hasChargingControl)
+      } else {
+        ProgressView()
+      }
 
       if !hasChargingControl {
         SettingsInlineMessage(
@@ -18,12 +42,15 @@ struct ChargingSailingModeSection: View {
         )
       }
 
-      if hasChargingControl && sailingMode {
+      if hasChargingControl && state.settings?.sailingModeEnabled == true {
         SettingsValueSlider(
           "Threshold below limit",
-          value: $sailingModeLimit,
-          range: 1...20,
-          valueLabel: { "\($0)%" }
+          value: $draftSailingDelta,
+          range: 1...maximumSailingDelta,
+          valueLabel: { "\($0)%" },
+          onEditingChanged: { isEditing in
+            isEditingSailingDelta = isEditing
+          }
         )
 
         LabeledContent("Charging resumes at") {
@@ -32,6 +59,13 @@ struct ChargingSailingModeSection: View {
             .foregroundStyle(.secondary)
         }
       }
+
+      if let errorMessage = state.errorMessage {
+        SettingsInlineMessage(
+          title: Text("Couldn’t save sailing mode settings."),
+          message: Text(errorMessage)
+        )
+      }
     } header: {
       SettingsSectionHeader(
         "Sailing Mode",
@@ -39,5 +73,17 @@ struct ChargingSailingModeSection: View {
           "Automatically resume charging when the battery drops below the threshold relative to your charge limit."
       )
     }
+    .onAppear(perform: synchronizeDraft)
+    .onChange(of: draftSailingDelta) { _, sailingDelta in
+      state.setSailingDelta(sailingDelta)
+    }
+    .onChange(of: state.settings?.sailingDelta) { _, _ in
+      guard !isEditingSailingDelta else { return }
+      synchronizeDraft()
+    }
+  }
+
+  private func synchronizeDraft() {
+    draftSailingDelta = min(state.settings?.sailingDelta ?? 5, maximumSailingDelta)
   }
 }

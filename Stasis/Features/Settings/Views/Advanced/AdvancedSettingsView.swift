@@ -3,12 +3,12 @@ import SwiftUI
 
 struct AdvancedSettingsView: View {
   @Default(.restartOnClose) private var restartOnClose
-  @Bindable var chargingSettingsModel: ChargingSettingsModel
+  @Bindable var batteryPercentageState: BatteryPercentageSettingsState
 
   private var useHardwarePercentage: Binding<Bool> {
     Binding(
-      get: { chargingSettingsModel.batteryPercentage?.useHardwarePercentage ?? false },
-      set: { chargingSettingsModel.setUseHardwarePercentage($0) }
+      get: { batteryPercentageState.settings?.useHardwarePercentage ?? false },
+      set: { batteryPercentageState.setUseHardwarePercentage($0) }
     )
   }
 
@@ -22,7 +22,7 @@ struct AdvancedSettingsView: View {
       Section {
         Toggle("Use hardware percentage", isOn: useHardwarePercentage)
 
-        if chargingSettingsModel.batteryPercentage?.useHardwarePercentage == true {
+        if batteryPercentageState.settings?.useHardwarePercentage == true {
           SettingsInlineMessage(
             title: Text(
               "Hardware percentage can differ from the calibrated value macOS shows in the battery menu."
@@ -31,7 +31,7 @@ struct AdvancedSettingsView: View {
           )
         }
 
-        if let errorMessage = chargingSettingsModel.errorMessage {
+        if let errorMessage = batteryPercentageState.errorMessage {
           SettingsInlineMessage(
             title: Text("Couldn’t save battery reading settings."),
             message: Text(errorMessage)
@@ -43,7 +43,7 @@ struct AdvancedSettingsView: View {
           message: "Use the raw battery percentage instead of the macOS calibrated value."
         )
       }
-      .disabled(chargingSettingsModel.batteryPercentage == nil || chargingSettingsModel.isSaving)
+      .disabled(batteryPercentageState.settings == nil || batteryPercentageState.isSaving)
 
       Section {
         Toggle("Restart Stasis when Settings closes", isOn: $restartOnClose)
@@ -60,6 +60,6 @@ struct AdvancedSettingsView: View {
 
 #Preview {
   AdvancedSettingsView(
-    chargingSettingsModel: .preview(managementEnabled: true)
+    batteryPercentageState: ChargingSettingsModel.preview(managementEnabled: true).batteryPercentageState
   )
 }

@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct ChargingManagementSection: View {
-  @Binding var manageCharging: Bool
-  @Binding var chargeLimit: Int
+  @Bindable var managementState: ManagementSettingsState
+  @Bindable var thresholdState: ThresholdSettingsState
+  @State private var draftChargeLimit = 80
+  @State private var isEditingChargeLimit = false
+
+  let previewManageCharging: Bool?
   let hasAnyControl: Bool
   let shouldShowChargingControls: Bool
   let isCheckingChargingDaemon: Bool
@@ -11,15 +15,38 @@ struct ChargingManagementSection: View {
   let shouldShowChargingControlError: Bool
   let helperStatus: ChargingHelperStatus
   let connectionStatus: ChargingDaemonConnectionStatus
+  let setManageCharging: (Bool) -> Void
   let openApprovalSettings: () -> Void
   let checkApprovalStatus: () -> Void
   let requestEnableChargingManagement: () -> Void
   let reconnectChargingDaemon: () -> Void
 
+  private var manageCharging: Binding<Bool> {
+    Binding(
+      get: {
+        guard hasAnyControl else { return false }
+        return previewManageCharging ?? managementState.settings?.isEnabled ?? false
+      },
+      set: { enabled in
+        setManageCharging(enabled)
+      }
+    )
+  }
+
+  private var statusMessage: String? {
+    displayedStatusMessage
+      ?? managementState.errorMessage
+      ?? thresholdState.errorMessage
+  }
+
   var body: some View {
     Section {
-      Toggle("Manage charging", isOn: $manageCharging)
-        .disabled(!hasAnyControl || isCheckingChargingDaemon)
+      Toggle("Manage charging", isOn: manageCharging)
+        .disabled(
+          !hasAnyControl
+            || isCheckingChargingDaemon
+            || managementState.isSaving
+        )
 
       if !hasAnyControl {
         SettingsInlineMessage(
@@ -49,9 +76,9 @@ struct ChargingManagementSection: View {
         }
       }
 
-      if let displayedStatusMessage, shouldShowChargingControlError {
+      if let statusMessage, shouldShowChargingControlError {
         ChargingDaemonStatusRow(
-          message: displayedStatusMessage,
+          message: statusMessage,
           isLoading: isCheckingChargingDaemon,
           helperStatus: helperStatus,
           connectionStatus: connectionStatus,
@@ -63,13 +90,20 @@ struct ChargingManagementSection: View {
       }
 
       if shouldShowChargingControls {
-        SettingsValueSlider(
-          "Charge limit",
-          value: $chargeLimit,
-          range: 50...100,
-          step: 5,
-          valueLabel: { "\($0)%" }
-        )
+        if thresholdState.settings != nil {
+          SettingsValueSlider(
+            "Charge limit",
+            value: $draftChargeLimit,
+            range: 50...100,
+            step: 5,
+            valueLabel: { "\($0)%" },
+            onEditingChanged: { isEditing in
+              isEditingChargeLimit = isEditing
+            }
+          )
+        } else {
+          ProgressView()
+        }
       }
     } header: {
       SettingsSectionHeader(
@@ -77,5 +111,17 @@ struct ChargingManagementSection: View {
         message: "Limit the maximum charge level to extend battery lifespan."
       )
     }
+    .onAppear(perform: synchronizeDraft)
+    .onChange(of: draftChargeLimit) { _, chargeLimit in
+      thresholdState.setChargeLimit(chargeLimit)
+    }
+    .onChange(of: thresholdState.settings?.chargeLimit) { _, _ in
+      guard !isEditingChargeLimit else { return }
+      synchronizeDraft()
+    }
+  }
+
+  private func synchronizeDraft() {
+    draftChargeLimit = thresholdState.settings?.chargeLimit ?? 80
   }
 }

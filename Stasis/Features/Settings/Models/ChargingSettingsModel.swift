@@ -57,38 +57,81 @@ struct ChargingSettingsAvailability: Equatable {
 @Observable
 final class ChargingSettingsModel {
   private let client: any ChargingSettingsManaging
-  private let sliderDebounce: Duration
-  private var thresholdDebounceTask: Task<Void, Never>?
-  private var heatDebounceTask: Task<Void, Never>?
-  private var saveTasks: [String: Task<Void, Never>] = [:]
   private var isStopped = false
 
-  private(set) var management: ChargingManagementSettings?
-  private(set) var threshold: ChargingThresholdSettings?
-  private(set) var automaticDischarge: AutomaticDischargeSettings?
-  private(set) var sleepPrevention: SleepPreventionSettings?
-  private(set) var heatProtection: HeatProtectionSettings?
-  private(set) var magSafeLED: MagSafeLEDSettings?
-  private(set) var batteryPercentage: BatteryPercentageSettings?
-  private(set) var capabilities: DaemonCapabilities?
-  private(set) var errorMessage: String?
+  let managementState: ManagementSettingsState
+  let thresholdState: ThresholdSettingsState
+  let automaticDischargeState: AutomaticDischargeSettingsState
+  let sleepPreventionState: SleepPreventionSettingsState
+  let heatProtectionState: HeatProtectionSettingsState
+  let magSafeLEDState: MagSafeLEDSettingsState
+  let batteryPercentageState: BatteryPercentageSettingsState
 
-  var isLoaded: Bool {
-    management != nil && threshold != nil && automaticDischarge != nil
-      && sleepPrevention != nil && heatProtection != nil && magSafeLED != nil
-      && batteryPercentage != nil
+  private(set) var capabilities: DaemonCapabilities?
+  private(set) var isLoaded: Bool
+
+  var management: ChargingManagementSettings? { managementState.settings }
+  var threshold: ChargingThresholdSettings? { thresholdState.settings }
+  var automaticDischarge: AutomaticDischargeSettings? { automaticDischargeState.settings }
+  var sleepPrevention: SleepPreventionSettings? { sleepPreventionState.settings }
+  var heatProtection: HeatProtectionSettings? { heatProtectionState.settings }
+  var magSafeLED: MagSafeLEDSettings? { magSafeLEDState.settings }
+  var batteryPercentage: BatteryPercentageSettings? { batteryPercentageState.settings }
+
+  var isSaving: Bool {
+    managementState.isSaving
+      || thresholdState.isSaving
+      || automaticDischargeState.isSaving
+      || sleepPreventionState.isSaving
+      || heatProtectionState.isSaving
+      || magSafeLEDState.isSaving
+      || batteryPercentageState.isSaving
   }
 
-  var isSaving: Bool { !saveTasks.isEmpty }
+  var errorMessage: String? {
+    managementState.errorMessage
+      ?? thresholdState.errorMessage
+      ?? automaticDischargeState.errorMessage
+      ?? sleepPreventionState.errorMessage
+      ?? heatProtectionState.errorMessage
+      ?? magSafeLEDState.errorMessage
+      ?? batteryPercentageState.errorMessage
+  }
+
   var availability: ChargingSettingsAvailability { .init(capabilities: capabilities) }
 
-  init(
-    client: any ChargingSettingsManaging = ChargingDaemonManager.shared,
-    sliderDebounce: Duration = .milliseconds(250)
-  ) {
+  init(client: any ChargingSettingsManaging = ChargingDaemonManager.shared) {
     self.client = client
-    self.sliderDebounce = sliderDebounce
-    synchronizeFromManager()
+    managementState = .init(
+      initialSettings: client.chargingManagementSettings,
+      saveOperation: { try await client.setChargingManagementSettings($0) }
+    )
+    thresholdState = .init(
+      initialSettings: client.chargingThresholdSettings,
+      saveOperation: { try await client.setChargingThresholdSettings($0) }
+    )
+    automaticDischargeState = .init(
+      initialSettings: client.automaticDischargeSettings,
+      saveOperation: { try await client.setAutomaticDischargeSettings($0) }
+    )
+    sleepPreventionState = .init(
+      initialSettings: client.sleepPreventionSettings,
+      saveOperation: { try await client.setSleepPreventionSettings($0) }
+    )
+    heatProtectionState = .init(
+      initialSettings: client.heatProtectionSettings,
+      saveOperation: { try await client.setHeatProtectionSettings($0) }
+    )
+    magSafeLEDState = .init(
+      initialSettings: client.magSafeLEDSettings,
+      saveOperation: { try await client.setMagSafeLEDSettings($0) }
+    )
+    batteryPercentageState = .init(
+      initialSettings: client.batteryPercentageSettings,
+      saveOperation: { try await client.setBatteryPercentageSettings($0) }
+    )
+    capabilities = client.capabilities
+    isLoaded = Self.hasLoadedAllSettings(from: client)
     observeManagerStateChanges()
   }
 
@@ -97,151 +140,36 @@ final class ChargingSettingsModel {
   }
 
   func setManagementEnabled(_ enabled: Bool) {
-    guard let confirmed = management, confirmed.isEnabled != enabled else { return }
-    enqueueGroupSave("management", optimistic: nil, rollback: { self.management = confirmed }) {
-      self.management = try await self.client.setChargingManagementSettings(.init(isEnabled: enabled))
-    }
-  }
-
-  func updateChargingThreshold(
-    debounced: Bool = false,
-    _ update: (inout ChargingThresholdSettings) -> Void
-  ) {
-    guard let confirmed = threshold else { return }
-    var draft = confirmed
-    update(&draft)
-    guard draft != confirmed else { return }
-    threshold = draft
-    errorMessage = nil
-    if debounced {
-      thresholdDebounceTask?.cancel()
-      thresholdDebounceTask = Task { [weak self, sliderDebounce] in
-        try? await Task.sleep(for: sliderDebounce)
-        guard !Task.isCancelled else { return }
-        self?.saveChargingThreshold(draft, rollback: confirmed)
-      }
-    } else {
-      thresholdDebounceTask?.cancel()
-      saveChargingThreshold(draft, rollback: confirmed)
-    }
+    managementState.setEnabled(enabled)
   }
 
   func setAutomaticDischargeEnabled(_ enabled: Bool) {
-    guard let confirmed = automaticDischarge, confirmed.isEnabled != enabled else { return }
-    let draft = AutomaticDischargeSettings(isEnabled: enabled)
-    enqueueGroupSave("discharge", optimistic: { self.automaticDischarge = draft }, rollback: { self.automaticDischarge = confirmed }) {
-      self.automaticDischarge = try await self.client.setAutomaticDischargeSettings(draft)
-    }
+    automaticDischargeState.setEnabled(enabled)
   }
 
   func setSleepPreventionEnabled(_ enabled: Bool) {
-    guard let confirmed = sleepPrevention, confirmed.isEnabled != enabled else { return }
-    let draft = SleepPreventionSettings(isEnabled: enabled)
-    enqueueGroupSave("sleep", optimistic: { self.sleepPrevention = draft }, rollback: { self.sleepPrevention = confirmed }) {
-      self.sleepPrevention = try await self.client.setSleepPreventionSettings(draft)
-    }
-  }
-
-  func updateHeatProtection(
-    debounced: Bool = false,
-    _ update: (inout HeatProtectionSettings) -> Void
-  ) {
-    guard let confirmed = heatProtection else { return }
-    var draft = confirmed
-    update(&draft)
-    guard draft != confirmed else { return }
-    heatProtection = draft
-    errorMessage = nil
-    if debounced {
-      heatDebounceTask?.cancel()
-      heatDebounceTask = Task { [weak self, sliderDebounce] in
-        try? await Task.sleep(for: sliderDebounce)
-        guard !Task.isCancelled else { return }
-        self?.saveHeatProtection(draft, rollback: confirmed)
-      }
-    } else {
-      heatDebounceTask?.cancel()
-      saveHeatProtection(draft, rollback: confirmed)
-    }
-  }
-
-  func updateMagSafeLED(_ update: (inout MagSafeLEDSettings) -> Void) {
-    guard let confirmed = magSafeLED else { return }
-    var draft = confirmed
-    update(&draft)
-    guard draft != confirmed else { return }
-    enqueueGroupSave("magsafe", optimistic: { self.magSafeLED = draft }, rollback: { self.magSafeLED = confirmed }) {
-      self.magSafeLED = try await self.client.setMagSafeLEDSettings(draft)
-    }
+    sleepPreventionState.setEnabled(enabled)
   }
 
   func setUseHardwarePercentage(_ enabled: Bool) {
-    guard let confirmed = batteryPercentage, confirmed.useHardwarePercentage != enabled else { return }
-    let draft = BatteryPercentageSettings(useHardwarePercentage: enabled)
-    enqueueGroupSave("percentage", optimistic: { self.batteryPercentage = draft }, rollback: { self.batteryPercentage = confirmed }) {
-      self.batteryPercentage = try await self.client.setBatteryPercentageSettings(draft)
-    }
+    batteryPercentageState.setUseHardwarePercentage(enabled)
   }
 
-  func clearError() { errorMessage = nil }
-
   func disableManagementForDaemonUninstall() async throws {
-    guard saveTasks.isEmpty else { throw ChargingSettingsOperationError.saveInProgress }
-    thresholdDebounceTask?.cancel()
-    heatDebounceTask?.cancel()
+    guard !isSaving else { throw ChargingSettingsOperationError.saveInProgress }
     guard management?.isEnabled == true else { return }
-    let confirmed = management
-    do {
-      management = try await client.setChargingManagementSettings(.init(isEnabled: false))
-      errorMessage = nil
-    } catch {
-      management = confirmed
-      errorMessage = error.localizedDescription
-      throw error
-    }
+    try await managementState.setAndWait(.init(isEnabled: false))
   }
 
   func stop() {
     isStopped = true
-    thresholdDebounceTask?.cancel()
-    heatDebounceTask?.cancel()
-    saveTasks.values.forEach { $0.cancel() }
-    saveTasks.removeAll()
-  }
-
-  private func saveChargingThreshold(_ draft: ChargingThresholdSettings, rollback: ChargingThresholdSettings) {
-    enqueueGroupSave("threshold", optimistic: nil, rollback: { self.threshold = rollback }) {
-      self.threshold = try await self.client.setChargingThresholdSettings(draft)
-    }
-  }
-
-  private func saveHeatProtection(_ draft: HeatProtectionSettings, rollback: HeatProtectionSettings) {
-    enqueueGroupSave("heat", optimistic: nil, rollback: { self.heatProtection = rollback }) {
-      self.heatProtection = try await self.client.setHeatProtectionSettings(draft)
-    }
-  }
-
-  private func enqueueGroupSave(
-    _ key: String,
-    optimistic: (() -> Void)?,
-    rollback: @escaping () -> Void,
-    operation: @escaping () async throws -> Void
-  ) {
-    optimistic?()
-    errorMessage = nil
-    saveTasks[key]?.cancel()
-    saveTasks[key] = Task { [weak self] in
-      guard let self else { return }
-      do {
-        try await operation()
-      } catch is CancellationError {
-        return
-      } catch {
-        rollback()
-        self.errorMessage = error.localizedDescription
-      }
-      self.saveTasks[key] = nil
-    }
+    managementState.stop()
+    thresholdState.stop()
+    automaticDischargeState.stop()
+    sleepPreventionState.stop()
+    heatProtectionState.stop()
+    magSafeLEDState.stop()
+    batteryPercentageState.stop()
   }
 
   private func observeManagerStateChanges() {
@@ -268,13 +196,29 @@ final class ChargingSettingsModel {
     if capabilities != client.capabilities {
       capabilities = client.capabilities
     }
-    if saveTasks["management"] == nil { management = client.chargingManagementSettings }
-    if saveTasks["threshold"] == nil, thresholdDebounceTask == nil { threshold = client.chargingThresholdSettings }
-    if saveTasks["discharge"] == nil { automaticDischarge = client.automaticDischargeSettings }
-    if saveTasks["sleep"] == nil { sleepPrevention = client.sleepPreventionSettings }
-    if saveTasks["heat"] == nil, heatDebounceTask == nil { heatProtection = client.heatProtectionSettings }
-    if saveTasks["magsafe"] == nil { magSafeLED = client.magSafeLEDSettings }
-    if saveTasks["percentage"] == nil { batteryPercentage = client.batteryPercentageSettings }
+    managementState.synchronize(client.chargingManagementSettings)
+    thresholdState.synchronize(client.chargingThresholdSettings)
+    automaticDischargeState.synchronize(client.automaticDischargeSettings)
+    sleepPreventionState.synchronize(client.sleepPreventionSettings)
+    heatProtectionState.synchronize(client.heatProtectionSettings)
+    magSafeLEDState.synchronize(client.magSafeLEDSettings)
+    batteryPercentageState.synchronize(client.batteryPercentageSettings)
+    let managerIsLoaded = Self.hasLoadedAllSettings(from: client)
+    if isLoaded != managerIsLoaded {
+      isLoaded = managerIsLoaded
+    }
+  }
+
+  private static func hasLoadedAllSettings(
+    from client: any ChargingSettingsManaging
+  ) -> Bool {
+    client.chargingManagementSettings != nil
+      && client.chargingThresholdSettings != nil
+      && client.automaticDischargeSettings != nil
+      && client.sleepPreventionSettings != nil
+      && client.heatProtectionSettings != nil
+      && client.magSafeLEDSettings != nil
+      && client.batteryPercentageSettings != nil
   }
 }
 

@@ -3,6 +3,14 @@ import ServiceManagement
 import os.log
 
 @MainActor
+private final class ChargingSettingsCommandResult<Value> {
+  var value: Value?
+
+  @inline(never)
+  deinit {}
+}
+
+@MainActor
 @Observable
 class ChargingDaemonManager {
   static let shared = ChargingDaemonManager()
@@ -155,15 +163,21 @@ class ChargingDaemonManager {
     _ settings: ChargingThresholdSettings
   ) async throws -> ChargingThresholdSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
+    let result = ChargingSettingsCommandResult<ChargingThresholdSettings>()
     try await executeCommand("Set charging threshold settings") { [weak self] helper, reply in
       helper.setChargingThresholdSettings(payload: payload) { response, error in
         Task { @MainActor in
-          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.chargingThresholdSettings = $0 }
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { confirmed in
+            self?.chargingThresholdSettings = confirmed
+            result.value = confirmed
+          }
         }
       }
     }
-    guard let chargingThresholdSettings else { throw XPCError.commandFailed("Missing threshold settings response") }
-    return chargingThresholdSettings
+    guard let confirmed = result.value else {
+      throw XPCError.commandFailed("Missing threshold settings response")
+    }
+    return confirmed
   }
 
   func setAutomaticDischargeSettings(
@@ -200,15 +214,21 @@ class ChargingDaemonManager {
     _ settings: HeatProtectionSettings
   ) async throws -> HeatProtectionSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
+    let result = ChargingSettingsCommandResult<HeatProtectionSettings>()
     try await executeCommand("Set heat protection settings") { [weak self] helper, reply in
       helper.setHeatProtectionSettings(payload: payload) { response, error in
         Task { @MainActor in
-          Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.heatProtectionSettings = $0 }
+          Self.decodeSettingsResponse(response, error: error, reply: reply) { confirmed in
+            self?.heatProtectionSettings = confirmed
+            result.value = confirmed
+          }
         }
       }
     }
-    guard let heatProtectionSettings else { throw XPCError.commandFailed("Missing heat settings response") }
-    return heatProtectionSettings
+    guard let confirmed = result.value else {
+      throw XPCError.commandFailed("Missing heat settings response")
+    }
+    return confirmed
   }
 
   func setMagSafeLEDSettings(

@@ -915,9 +915,6 @@
     "Choose which live battery and power metrics appear in the menu bar dropdown." : {
 
     },
-    "Control how Stasis manages memory." : {
-
-    },
     "Control how Stasis starts, appears in the menu bar, and sends notifications." : {
 
     },
@@ -967,7 +964,22 @@
     "Couldn’t remove the background service." : {
 
     },
+    "Couldn’t save automatic discharge settings." : {
+
+    },
     "Couldn’t save battery reading settings." : {
+
+    },
+    "Couldn’t save heat protection settings." : {
+
+    },
+    "Couldn’t save MagSafe LED settings." : {
+
+    },
+    "Couldn’t save sailing mode settings." : {
+
+    },
+    "Couldn’t save sleep prevention settings." : {
 
     },
     "Cycle count" : {
