@@ -23,6 +23,32 @@ final class ChargingSettingsModelTests: XCTestCase {
         XCTAssertEqual(model.batteryPercentage?.useHardwarePercentage, false)
     }
 
+    func testTracksDedicatedCapabilitiesProperty() async {
+        let client = MockChargingSettingsManager()
+        let initial = DaemonCapabilities(
+            chargeControlMode: .legacy,
+            adapterControl: true,
+            magSafeLEDKeyAvailable: true
+        )
+        client.capabilities = initial
+        let model = ChargingSettingsModel(client: client)
+
+        XCTAssertEqual(model.capabilities, initial)
+
+        let updated = DaemonCapabilities(
+            chargeControlMode: .firmware,
+            adapterControl: false,
+            magSafeLEDKeyAvailable: false
+        )
+        client.capabilities = updated
+
+        for _ in 0..<100 where model.capabilities != updated {
+            await Task.yield()
+        }
+
+        XCTAssertEqual(model.capabilities, updated)
+    }
+
     func testToggleSendsOnlyItsGroup() async {
         let client = MockChargingSettingsManager()
         let model = ChargingSettingsModel(client: client)
@@ -91,7 +117,7 @@ private final class MockChargingSettingsManager: ChargingSettingsManaging {
     var heatProtectionSettings: HeatProtectionSettings?
     var magSafeLEDSettings: MagSafeLEDSettings?
     var batteryPercentageSettings: BatteryPercentageSettings?
-    var daemonSnapshot: DaemonSnapshot?
+    var capabilities: DaemonCapabilities?
 
     var managementWrites: [ChargingManagementSettings] = []
     var thresholdWrites: [ChargingThresholdSettings] = []

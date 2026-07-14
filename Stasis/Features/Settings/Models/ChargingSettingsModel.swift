@@ -18,7 +18,7 @@ protocol ChargingSettingsManaging: AnyObject {
   var heatProtectionSettings: HeatProtectionSettings? { get }
   var magSafeLEDSettings: MagSafeLEDSettings? { get }
   var batteryPercentageSettings: BatteryPercentageSettings? { get }
-  var daemonSnapshot: DaemonSnapshot? { get }
+  var capabilities: DaemonCapabilities? { get }
 
   func setChargingManagementSettings(_ settings: ChargingManagementSettings) async throws -> ChargingManagementSettings
   func setChargingThresholdSettings(_ settings: ChargingThresholdSettings) async throws -> ChargingThresholdSettings
@@ -254,7 +254,7 @@ final class ChargingSettingsModel {
       _ = client.heatProtectionSettings
       _ = client.magSafeLEDSettings
       _ = client.batteryPercentageSettings
-      _ = client.daemonSnapshot
+      _ = client.capabilities
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self, !self.isStopped else { return }
@@ -265,7 +265,9 @@ final class ChargingSettingsModel {
   }
 
   private func synchronizeFromManager() {
-    capabilities = client.daemonSnapshot?.capabilities
+    if capabilities != client.capabilities {
+      capabilities = client.capabilities
+    }
     if saveTasks["management"] == nil { management = client.chargingManagementSettings }
     if saveTasks["threshold"] == nil, thresholdDebounceTask == nil { threshold = client.chargingThresholdSettings }
     if saveTasks["discharge"] == nil { automaticDischarge = client.automaticDischargeSettings }
@@ -286,7 +288,7 @@ private final class ChargingSettingsPreviewClient: ChargingSettingsManaging {
   var heatProtectionSettings: HeatProtectionSettings? = .init()
   var magSafeLEDSettings: MagSafeLEDSettings? = .init()
   var batteryPercentageSettings: BatteryPercentageSettings? = .init()
-  var daemonSnapshot: DaemonSnapshot?
+  var capabilities: DaemonCapabilities?
 
   init(managementEnabled: Bool) {
     chargingManagementSettings = .init(isEnabled: managementEnabled)

@@ -27,6 +27,7 @@ class ChargingDaemonManager {
   private(set) var heatProtectionSettings: HeatProtectionSettings?
   private(set) var magSafeLEDSettings: MagSafeLEDSettings?
   private(set) var batteryPercentageSettings: BatteryPercentageSettings?
+  private(set) var capabilities: DaemonCapabilities?
   private(set) var daemonSnapshot: DaemonSnapshot?
 
   var hasFreshDaemonSnapshot: Bool {
@@ -605,7 +606,7 @@ class ChargingDaemonManager {
     guard isActiveConnection(generation) else { return }
     do {
       let recoveredFromInterruption = connectionStatus == .interrupted
-      daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
+      applySnapshot(try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload))
       snapshotAuthority.markAuthoritative(generation)
       // A valid callback also proves that an interrupted XPC connection has
       // recovered. This switches BatteryService back from its local fallback.
@@ -615,6 +616,13 @@ class ChargingDaemonManager {
       }
     } catch {
       recordRuntimeError(error, while: "Decode daemon snapshot callback")
+    }
+  }
+
+  private func applySnapshot(_ snapshot: DaemonSnapshot) {
+    daemonSnapshot = snapshot
+    if capabilities != snapshot.capabilities {
+      capabilities = snapshot.capabilities
     }
   }
 
@@ -633,7 +641,7 @@ class ChargingDaemonManager {
       return
     }
     do {
-      daemonSnapshot = try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload)
+      applySnapshot(try DaemonPayloadCodec.decode(DaemonSnapshot.self, from: payload))
       snapshotAuthority.markAuthoritative(generation)
       reply(true, nil)
     } catch {
