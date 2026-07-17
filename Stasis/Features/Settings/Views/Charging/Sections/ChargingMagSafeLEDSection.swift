@@ -6,6 +6,7 @@ struct ChargingMagSafeLEDSection: View {
 
   let hasChargingControl: Bool
   let hasMagSafeLEDControl: Bool
+  var isModeLimited = false
 
   private var isEnabled: Binding<Bool> {
     Binding(
@@ -31,12 +32,21 @@ struct ChargingMagSafeLEDSection: View {
       }
 
       if !hasMagSafeLEDControl {
-        SettingsInlineMessage(
-          title: Text("MagSafe LED control is not supported on this device."),
-          message: Text(
-            "Stasis can still manage charging, but this Mac does not expose MagSafe LED controls."
+        if isModeLimited {
+          SettingsInlineMessage(
+            title: Text("MagSafe LED control is unavailable in this charge-control mode."),
+            message: Text(
+              "This Mac's firmware enforces the charge limit itself, so Stasis does not manage charging and cannot decide what the MagSafe LED should show."
+            )
           )
-        )
+        } else {
+          SettingsInlineMessage(
+            title: Text("MagSafe LED control is not supported on this device."),
+            message: Text(
+              "Stasis can still manage charging, but this Mac does not expose MagSafe LED controls."
+            )
+          )
+        }
       }
 
       if hasMagSafeLEDControl,

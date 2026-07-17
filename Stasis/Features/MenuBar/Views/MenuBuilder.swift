@@ -59,11 +59,23 @@ class MenuBuilder {
         if ChargingDaemonManager.shared.chargingManagementSettings?.isEnabled == true
             && batteryService.adapterMetrics.adapterConnected
         {
-            menu.addItem(NSMenuItem.separator())
-            menu.addItem(
-                createMenuItem(view: ChargeLimitOverrideToggleView(controls: chargingControls)))
-            menu.addItem(
-                createMenuItem(view: ForceDischargeToggleView(controls: chargingControls)))
+            // Unknown capabilities (daemon still connecting) fall back to
+            // showing every command, mirroring the daemon-side permissive
+            // default for older daemons.
+            let capabilities = ChargingDaemonManager.shared.capabilities
+            var temporaryControlItems: [NSMenuItem] = []
+            if capabilities?.chargeLimitOverrideControl ?? true {
+                temporaryControlItems.append(
+                    createMenuItem(view: ChargeLimitOverrideToggleView(controls: chargingControls)))
+            }
+            if capabilities?.forceDischargeControl ?? true {
+                temporaryControlItems.append(
+                    createMenuItem(view: ForceDischargeToggleView(controls: chargingControls)))
+            }
+            if !temporaryControlItems.isEmpty {
+                menu.addItem(NSMenuItem.separator())
+                temporaryControlItems.forEach(menu.addItem)
+            }
         }
 
         menu.addItem(NSMenuItem.separator())

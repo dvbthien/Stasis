@@ -78,6 +78,13 @@ struct ChargingSettingsView: View {
             ?? fallbackCapabilities.magsafeLEDControl
     }
 
+    /// True when the macOS 27-era firmware enforces the charge limit itself.
+    /// Features the daemon cannot drive in that mode are described as
+    /// mode-limited instead of missing hardware.
+    private var isFirmwareChargeControl: Bool {
+        settingsModel.capabilities?.firmwareChargeLimitControl == true
+    }
+
     private var daemonStatus: ChargingDaemonStatus {
         previewState?.daemonStatus ?? daemonManager.daemonStatus
     }
@@ -185,7 +192,8 @@ struct ChargingSettingsView: View {
 
                 ChargingHeatProtectionSection(
                     state: settingsModel.heatProtectionState,
-                    hasChargingControl: heatProtectionSupported
+                    hasChargingControl: heatProtectionSupported,
+                    isModeLimited: isFirmwareChargeControl
                 )
 
                 if hasMagSafe {
@@ -193,7 +201,8 @@ struct ChargingSettingsView: View {
                         state: settingsModel.magSafeLEDState,
                         heatProtectionState: settingsModel.heatProtectionState,
                         hasChargingControl: heatProtectionSupported,
-                        hasMagSafeLEDControl: magSafeLEDSupported
+                        hasMagSafeLEDControl: magSafeLEDSupported,
+                        isModeLimited: isFirmwareChargeControl
                     )
                 }
             }
