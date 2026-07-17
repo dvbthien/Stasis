@@ -62,6 +62,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settingsWindow.toolbarStyle = .unifiedCompact
         settingsWindow.toolbar = NSToolbar()
         settingsWindow.center()
+        NSApp.setActivationPolicy(.regular)
+        settingsWindow.orderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         settingsWindow.isReleasedWhenClosed = false
         settingsWindow.delegate = self
 
@@ -70,6 +73,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     // Release the hosted Settings UI and optionally schedule an app restart.
     private func handleWindowWillClose() {
+        NSApp.setActivationPolicy(.accessory)
         window?.contentViewController = nil
         window = nil
 
