@@ -6,6 +6,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
     private let runtime: DaemonRuntimeCoordinator
     private let capabilities: DaemonCapabilities
     private let daemonVersion: String
+    private let executableHash: String?
     private let clients: DaemonClientRegistry
 
     init(
@@ -14,6 +15,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         runtime: DaemonRuntimeCoordinator,
         capabilities: DaemonCapabilities,
         daemonVersion: String,
+        executableHash: String?,
         clients: DaemonClientRegistry
     ) {
         self.settingsStore = settingsStore
@@ -21,6 +23,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         self.runtime = runtime
         self.capabilities = capabilities
         self.daemonVersion = daemonVersion
+        self.executableHash = executableHash
         self.clients = clients
     }
 
@@ -31,6 +34,7 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
             runtime: runtime,
             capabilities: capabilities,
             daemonVersion: daemonVersion,
+            executableHash: executableHash,
             clients: clients
         )
     }
@@ -39,11 +43,12 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
 
     func checkHealth(reply: @escaping @Sendable (Data?, String?) -> Void) {
         let status: DaemonRuntimeStatus = capabilities.chargingControl ? .ready : .unsupported
-        sendEncodedResponse(reply: reply) { [capabilities, daemonVersion] in
+        sendEncodedResponse(reply: reply) { [capabilities, daemonVersion, executableHash] in
             DaemonHealth(
                 status: status,
                 daemonVersion: daemonVersion,
-                chargeControlMode: capabilities.chargeControlMode
+                chargeControlMode: capabilities.chargeControlMode,
+                executableHash: executableHash
             )
         }
     }

@@ -86,6 +86,7 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             runtime: runtime,
             capabilities: capabilities,
             daemonVersion: "test",
+            executableHash: "test-hash",
             clients: clients
         )
     }

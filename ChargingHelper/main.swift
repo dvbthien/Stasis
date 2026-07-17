@@ -26,6 +26,7 @@ let capabilities = DaemonCapabilities(
 let daemonVersion = Bundle.main.object(
     forInfoDictionaryKey: "CFBundleShortVersionString"
 ) as? String ?? "1.0"
+let daemonExecutableHash = DaemonBuildIdentity.currentExecutableHash()
 let hardware = ChargingHelper(battery: battery, adapter: adapter)
 let clients = DaemonClientRegistry()
 
@@ -55,6 +56,7 @@ let commandHandler = ChargingDaemonCommandHandler(
     runtime: runtime,
     capabilities: capabilities,
     daemonVersion: daemonVersion,
+    executableHash: daemonExecutableHash,
     clients: clients
 )
 
@@ -101,7 +103,10 @@ Task { @MainActor in
         await runtime.handlePowerSourceUpdate(initialUpdate)
     }
     server.start()
-    logger.info("Stasis daemon XPC server started with initial IOKit snapshot")
+    let buildID = daemonExecutableHash.map { String($0.prefix(12)) } ?? "unknown"
+    logger.info(
+        "Stasis daemon XPC server started with initial IOKit snapshot (build \(buildID, privacy: .public))"
+    )
 }
 
 RunLoop.main.run()

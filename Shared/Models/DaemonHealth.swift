@@ -7,4 +7,6 @@ struct DaemonHealth: Codable, Equatable, Sendable {
     var status: DaemonRuntimeStatus
     var daemonVersion: String
     var chargeControlMode: ChargeControlMode
+    // Optional so payloads from daemons built before this field decode.
+    var executableHash: String?
 }

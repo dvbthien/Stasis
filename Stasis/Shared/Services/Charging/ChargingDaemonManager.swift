@@ -37,6 +37,25 @@ class ChargingDaemonManager {
   private(set) var batteryPercentageSettings: BatteryPercentageSettings?
   private(set) var capabilities: DaemonCapabilities?
   private(set) var daemonSnapshot: DaemonSnapshot?
+  @ObservationIgnored private(set) var daemonExecutableHash: String?
+  @ObservationIgnored private var outdatedRepairTask: Task<Bool, Error>?
+  @ObservationIgnored private var didScheduleStartupBuildCheck = false
+  @ObservationIgnored private lazy var bundledDaemonExecutableHash: String? =
+    DaemonBuildIdentity.executableHash(
+      at: Bundle.main.bundleURL
+        .appendingPathComponent("Contents/Library/LaunchDaemons/StasisDaemon")
+    )
+
+  /// True when the connected daemon was spawned from a different binary than
+  /// the one bundled with this app, meaning launchd is still running an older
+  /// build and the registration should be repaired.
+  var isDaemonOutdated: Bool {
+    guard
+      let daemonExecutableHash,
+      let bundledDaemonExecutableHash
+    else { return false }
+    return daemonExecutableHash != bundledDaemonExecutableHash
+  }
 
   var hasFreshDaemonSnapshot: Bool {
     snapshotAuthority.isAuthoritative && daemonSnapshot != nil
@@ -145,6 +164,47 @@ class ChargingDaemonManager {
     guard service.status == .enabled else { return }
     if connection == nil {
       connect()
+    }
+    scheduleStartupBuildCheck()
+  }
+
+  /// Verifies the connected daemon's build identity and re-registers the
+  /// daemon when it was spawned from a different binary than the one bundled
+  /// with this app. Single-flight: concurrent callers share one repair.
+  /// Returns true when a repair was performed.
+  func repairDaemonIfOutdated() async throws -> Bool {
+    if let outdatedRepairTask {
+      return try await outdatedRepairTask.value
+    }
+    let task = Task<Bool, Error> {
+      defer { outdatedRepairTask = nil }
+      try await verifyConnection()
+      guard isDaemonOutdated else { return false }
+      logger.info(
+        "Charging daemon binary differs from the bundled build; repairing to update it"
+      )
+      try await repairInstallation()
+      try await verifyConnection()
+      return true
+    }
+    outdatedRepairTask = task
+    return try await task.value
+  }
+
+  private func scheduleStartupBuildCheck() {
+    guard !didScheduleStartupBuildCheck else { return }
+    didScheduleStartupBuildCheck = true
+    Task { [weak self] in
+      guard let self else { return }
+      do {
+        if try await repairDaemonIfOutdated() {
+          logger.info("Replaced outdated charging daemon at startup")
+        }
+      } catch {
+        logger.error(
+          "Startup charging daemon build check failed: \(error.localizedDescription)"
+        )
+      }
     }
   }
 
@@ -336,13 +396,14 @@ class ChargingDaemonManager {
     // can fail even when the daemon is reachable.
     try await executeCommand("Verify charging daemon") { helper, reply in
       helper.checkHealth { payload, errorMessage in
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
           guard let payload else {
             reply(false, errorMessage ?? "Charging daemon did not respond")
             return
           }
           do {
-            _ = try DaemonPayloadCodec.decode(DaemonHealth.self, from: payload)
+            let health = try DaemonPayloadCodec.decode(DaemonHealth.self, from: payload)
+            self?.daemonExecutableHash = health.executableHash
             reply(true, nil)
           } catch {
             reply(false, "Invalid daemon health response: \(error.localizedDescription)")
@@ -374,6 +435,7 @@ class ChargingDaemonManager {
 
   private func connect() {
     connectionStatus = .connecting
+    daemonExecutableHash = nil
     chargingManagementSettings = nil
     chargingThresholdSettings = nil
     automaticDischargeSettings = nil
