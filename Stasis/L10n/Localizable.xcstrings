@@ -221,9 +221,6 @@
         }
       }
     },
-    "Background Service" : {
-
-    },
     "Battery" : {
       "localizations" : {
         "de" : {
@@ -958,7 +955,7 @@
         }
       }
     },
-    "Controls charging while Stasis isn't open." : {
+    "Provides charging status in the background and applies policies when Manage charging is enabled." : {
 
     },
     "Couldn’t remove the background service." : {
@@ -1061,6 +1058,27 @@
           }
         }
       }
+    },
+    "Charging Service" : {
+
+    },
+    "Charging service status: %@" : {
+
+    },
+    "Checking" : {
+
+    },
+    "Connection Issue" : {
+
+    },
+    "Needs Approval" : {
+
+    },
+    "Not Installed" : {
+
+    },
+    "Ready" : {
+
     },
     "Dashboard" : {
       "localizations" : {
@@ -1506,9 +1524,6 @@
           }
         }
       }
-    },
-    "Install Helper" : {
-
     },
     "Launch at login" : {
       "localizations" : {
@@ -2247,7 +2262,7 @@
     "Remove Background Service?" : {
 
     },
-    "Remove…" : {
+    "Remove the charging service from this Mac." : {
 
     },
     "Removing…" : {
@@ -2272,9 +2287,6 @@
           }
         }
       }
-    },
-    "Retry" : {
-
     },
     "Sailing Mode" : {
       "localizations" : {

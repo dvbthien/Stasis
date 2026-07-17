@@ -10,9 +10,11 @@ struct ChargingManagementSection: View {
   let hasAnyControl: Bool
   let shouldShowChargingControls: Bool
   let isCheckingChargingDaemon: Bool
+  let isDeterminingDaemonStatus: Bool
+  let isUninstalling: Bool
   let shouldShowApprovalPrompt: Bool
   let displayedStatusMessage: String?
-  let shouldShowChargingControlError: Bool
+  let uninstallErrorMessage: String?
   let helperStatus: ChargingHelperStatus
   let connectionStatus: ChargingDaemonConnectionStatus
   let setManageCharging: (Bool) -> Void
@@ -20,6 +22,7 @@ struct ChargingManagementSection: View {
   let checkApprovalStatus: () -> Void
   let requestEnableChargingManagement: () -> Void
   let reconnectChargingDaemon: () -> Void
+  let requestUninstall: () -> Void
 
   private var manageCharging: Binding<Bool> {
     Binding(
@@ -33,20 +36,47 @@ struct ChargingManagementSection: View {
     )
   }
 
-  private var statusMessage: String? {
-    displayedStatusMessage
-      ?? managementState.errorMessage
-      ?? thresholdState.errorMessage
+  private var didChargeLimitSaveFail: Bool {
+    guard let failedSettings = thresholdState.failedSettings else {
+      return false
+    }
+    return failedSettings.chargeLimit != thresholdState.settings?.chargeLimit
+  }
+
+  private var serviceStatusPresentation: ChargingServiceStatusPresentation {
+    ChargingServiceStatusPresentation(
+      helperStatus: helperStatus,
+      connectionStatus: connectionStatus,
+      isDeterminingStatus: isDeterminingDaemonStatus,
+      hasOperationError: displayedStatusMessage != nil
+        && !isCheckingChargingDaemon
+    )
   }
 
   var body: some View {
     Section {
+      ChargingDaemonLifecycleSection(
+        presentation: serviceStatusPresentation,
+        isUninstalling: isUninstalling,
+        isBusy: isCheckingChargingDaemon,
+        errorMessage: uninstallErrorMessage,
+        requestUninstall: requestUninstall
+      )
+
       Toggle("Manage charging", isOn: manageCharging)
         .disabled(
           !hasAnyControl
             || isCheckingChargingDaemon
             || managementState.isSaving
         )
+
+      if let errorMessage = managementState.errorMessage {
+        SettingsRetryMessage(
+          title: Text("Couldn’t save charge management settings."),
+          message: Text(errorMessage),
+          retry: managementState.retryLastSave
+        )
+      }
 
       if !hasAnyControl {
         SettingsInlineMessage(
@@ -76,14 +106,11 @@ struct ChargingManagementSection: View {
         }
       }
 
-      if let statusMessage, shouldShowChargingControlError {
+      if let displayedStatusMessage,
+         serviceStatusPresentation.recoveryAction != nil {
         ChargingDaemonStatusRow(
-          message: statusMessage,
-          isLoading: isCheckingChargingDaemon,
-          helperStatus: helperStatus,
-          connectionStatus: connectionStatus,
-          install: requestEnableChargingManagement,
-          openApprovalSettings: openApprovalSettings,
+          message: displayedStatusMessage,
+          presentation: serviceStatusPresentation,
           retry: requestEnableChargingManagement,
           reconnect: reconnectChargingDaemon
         )
@@ -104,6 +131,15 @@ struct ChargingManagementSection: View {
         } else {
           ProgressView()
         }
+      }
+
+      if let errorMessage = thresholdState.errorMessage,
+         didChargeLimitSaveFail {
+        SettingsRetryMessage(
+          title: Text("Couldn’t save charge limit."),
+          message: Text(errorMessage),
+          retry: thresholdState.retryLastSave
+        )
       }
     } header: {
       SettingsSectionHeader(

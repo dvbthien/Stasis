@@ -110,6 +110,45 @@ private struct ChargingSettingsPreviewContainer: View {
   )
 }
 
+#Preview("Connecting") {
+  ChargingSettingsPreviewContainer(
+    state: ChargingSettingsPreviewState(
+      title: "Connecting",
+      helperStatus: .installed,
+      connectionStatus: .connecting,
+      manageCharging: false,
+      isVerifying: false,
+      errorMessage: nil
+    )
+  )
+}
+
+#Preview("Disconnected") {
+  ChargingSettingsPreviewContainer(
+    state: ChargingSettingsPreviewState(
+      title: "Disconnected",
+      helperStatus: .installed,
+      connectionStatus: .disconnected,
+      manageCharging: false,
+      isVerifying: false,
+      errorMessage: "Charging daemon is disconnected."
+    )
+  )
+}
+
+#Preview("Invalidated") {
+  ChargingSettingsPreviewContainer(
+    state: ChargingSettingsPreviewState(
+      title: "Invalidated",
+      helperStatus: .installed,
+      connectionStatus: .invalidated,
+      manageCharging: false,
+      isVerifying: false,
+      errorMessage: "Charging daemon connection was invalidated."
+    )
+  )
+}
+
 #Preview("Requires Approval") {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
@@ -119,6 +158,19 @@ private struct ChargingSettingsPreviewContainer: View {
       manageCharging: false,
       isVerifying: false,
       errorMessage: "Approve Stasis in System Settings to enable charge management."
+    )
+  )
+}
+
+#Preview("Inactive Daemon") {
+  ChargingSettingsPreviewContainer(
+    state: ChargingSettingsPreviewState(
+      title: "Inactive Daemon",
+      helperStatus: .notInstalled,
+      connectionStatus: .disconnected,
+      manageCharging: false,
+      isVerifying: false,
+      errorMessage: nil
     )
   )
 }

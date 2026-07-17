@@ -2,22 +2,13 @@ import SwiftUI
 
 struct ChargingDaemonStatusRow: View {
   let message: String
-  let isLoading: Bool
-  let helperStatus: ChargingHelperStatus
-  let connectionStatus: ChargingDaemonConnectionStatus
-  let install: () -> Void
-  let openApprovalSettings: () -> Void
+  let presentation: ChargingServiceStatusPresentation
   let retry: () -> Void
   let reconnect: () -> Void
 
   var body: some View {
     LabeledContent {
-      if isLoading {
-        ProgressView()
-          .controlSize(.small)
-      } else {
-        recoveryAction
-      }
+      recoveryAction
     } label: {
       Text(message)
         .font(.subheadline)
@@ -27,32 +18,17 @@ struct ChargingDaemonStatusRow: View {
 
   @ViewBuilder
   private var recoveryAction: some View {
-    switch helperStatus {
-    case .notInstalled:
-      Button("Install Helper", systemImage: "wrench.and.screwdriver") {
-        install()
+    switch presentation.recoveryAction {
+    case .tryAgain:
+      Button("Try Again", systemImage: "arrow.clockwise") {
+        retry()
       }
-    case .requiresApproval:
-      Button("Open Login Items", systemImage: "gear") {
-        openApprovalSettings()
+    case .reconnect:
+      Button("Reconnect", systemImage: "arrow.clockwise") {
+        reconnect()
       }
-    case .installed:
-      switch connectionStatus {
-      case .startupFailed:
-        Button("Try Again", systemImage: "arrow.clockwise") {
-          retry()
-        }
-      case .runtimeFailed, .interrupted, .invalidated, .disconnected:
-        Button("Reconnect", systemImage: "arrow.clockwise") {
-          reconnect()
-        }
-      case .connecting:
-        EmptyView()
-      case .connected:
-        Button("Retry", systemImage: "arrow.clockwise") {
-          retry()
-        }
-      }
+    case nil:
+      EmptyView()
     }
   }
 }

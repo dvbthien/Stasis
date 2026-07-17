@@ -14,6 +14,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
   private(set) var settings: Settings?
   private(set) var isSaving = false
   private(set) var errorMessage: String?
+  private(set) var failedSettings: Settings?
 
   init(
     initialSettings: Settings?,
@@ -34,6 +35,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
 
     settings = draft
     errorMessage = nil
+    failedSettings = nil
 
     guard saveTask == nil else {
       pendingSettings = draft
@@ -59,6 +61,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
     settings = draft
     isSaving = true
     errorMessage = nil
+    failedSettings = nil
     do {
       let confirmed = try await saveOperation(draft)
       guard currentGeneration == generation else { return }
@@ -82,6 +85,12 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
 
   func clearError() {
     errorMessage = nil
+    failedSettings = nil
+  }
+
+  func retryLastSave() {
+    guard let failedSettings, saveTask == nil else { return }
+    set(failedSettings)
   }
 
   func stop() {
@@ -89,6 +98,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
     saveTask?.cancel()
     saveTask = nil
     pendingSettings = nil
+    failedSettings = nil
     isSaving = false
   }
 
@@ -97,6 +107,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
     let currentGeneration = generation
     isSaving = true
     errorMessage = nil
+    failedSettings = nil
     let rollback = confirmedSettings
 
     saveTask = Task { [weak self] in
@@ -109,6 +120,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
       } catch {
         finishSaving(
           rollback: rollback,
+          failedSettings: draft,
           error: error,
           generation: currentGeneration
         )
@@ -125,6 +137,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
 
   private func finishSaving(
     rollback: Settings?,
+    failedSettings: Settings,
     error: Error,
     generation currentGeneration: Int
   ) {
@@ -135,6 +148,7 @@ final class ChargingSettingsGroupState<Settings: Equatable> {
       savePendingSettingsOrFinish()
     } else {
       settings = rollback
+      self.failedSettings = failedSettings
       errorMessage = error.localizedDescription
       isSaving = false
     }

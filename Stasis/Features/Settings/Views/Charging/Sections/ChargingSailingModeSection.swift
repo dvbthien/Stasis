@@ -60,10 +60,12 @@ struct ChargingSailingModeSection: View {
         }
       }
 
-      if let errorMessage = state.errorMessage {
-        SettingsInlineMessage(
+      if let errorMessage = state.errorMessage,
+         state.failedSettings?.chargeLimit == state.settings?.chargeLimit {
+        SettingsRetryMessage(
           title: Text("Couldn’t save sailing mode settings."),
-          message: Text(errorMessage)
+          message: Text(errorMessage),
+          retry: state.retryLastSave
         )
       }
     } header: {

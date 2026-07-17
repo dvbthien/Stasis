@@ -87,6 +87,37 @@ final class ChargingSettingsModelTests: XCTestCase {
         XCTAssertEqual(client.thresholdWrites.first?.chargeLimit, 90)
     }
 
+    func testFailedSaveCanRetryOriginalDraft() async {
+        var shouldFail = true
+        var writes: [ChargingThresholdSettings] = []
+        let state = ThresholdSettingsState(
+            initialSettings: .init(),
+            saveOperation: { settings in
+                writes.append(settings)
+                if shouldFail {
+                    throw TestError.failed
+                }
+                return settings
+            }
+        )
+
+        state.setChargeLimit(90)
+        await waitForSave(state)
+
+        XCTAssertEqual(state.settings?.chargeLimit, 80)
+        XCTAssertEqual(state.failedSettings?.chargeLimit, 90)
+        XCTAssertNotNil(state.errorMessage)
+
+        shouldFail = false
+        state.retryLastSave()
+        await waitForSave(state)
+
+        XCTAssertEqual(writes.map(\.chargeLimit), [90, 90])
+        XCTAssertEqual(state.settings?.chargeLimit, 90)
+        XCTAssertNil(state.failedSettings)
+        XCTAssertNil(state.errorMessage)
+    }
+
     func testThresholdInvariantIsAppliedWithinItsGroup() async {
         let client = MockChargingSettingsManager()
         client.chargingThresholdSettings = .init(
@@ -167,6 +198,14 @@ final class ChargingSettingsModelTests: XCTestCase {
 
     private func waitForSaves(_ model: ChargingSettingsModel) async {
         for _ in 0..<100 where model.isSaving {
+            await Task.yield()
+        }
+    }
+
+    private func waitForSave<Settings>(
+        _ state: ChargingSettingsGroupState<Settings>
+    ) async {
+        for _ in 0..<100 where state.isSaving {
             await Task.yield()
         }
     }
