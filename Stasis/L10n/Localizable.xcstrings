@@ -1493,6 +1493,9 @@
         }
       }
     },
+    "Heat protection is unavailable in this charge-control mode." : {
+
+    },
     "Heat protection requires charging control support from this Mac." : {
 
     },
@@ -1715,6 +1718,9 @@
           }
         }
       }
+    },
+    "MagSafe LED control is unavailable in this charge-control mode." : {
+
     },
     "Manage charging" : {
       "localizations" : {
@@ -2553,6 +2559,12 @@
       }
     },
     "The daemon only enables this feature when direct charging and adapter control are both supported." : {
+
+    },
+    "This Mac's firmware enforces the charge limit itself, so Stasis cannot pause charging when the battery runs hot." : {
+
+    },
+    "This Mac's firmware enforces the charge limit itself, so Stasis does not manage charging and cannot decide what the MagSafe LED should show." : {
 
     },
     "Threshold below limit" : {
