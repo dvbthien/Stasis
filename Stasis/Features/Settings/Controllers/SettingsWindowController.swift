@@ -59,8 +59,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settingsWindow.titleVisibility = .hidden
         settingsWindow.titlebarAppearsTransparent = true
         settingsWindow.isMovableByWindowBackground = true
+        settingsWindow.toolbarStyle = .unifiedCompact
+        settingsWindow.toolbar = NSToolbar()
         settingsWindow.center()
-        settingsWindow.setFrameAutosaveName("SettingsWindow")
         settingsWindow.isReleasedWhenClosed = false
         settingsWindow.delegate = self
 

@@ -32,7 +32,7 @@ struct SettingsView: View {
         }
       )
       .navigationSplitViewColumnWidth(190)
-      .listStyle(.automatic)
+      .listStyle(.sidebar)
       .padding(.top, SettingsLayout.sidebarTopPadding)
       .tint(.gray)
     } detail: {
