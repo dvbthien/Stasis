@@ -2,18 +2,24 @@ import SwiftUI
 
 struct SettingsView: View {
   @State private var selectedTab: SettingsTab = .general
-  @State private var columnVisibility: NavigationSplitViewVisibility = .all
   @State private var chargingSettingsModel: ChargingSettingsModel
+  private var sidebarState: SettingsSidebarState
 
   private let capabilities: DeviceCapabilities
   private let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-  init(capabilities: DeviceCapabilities) {
+  init(capabilities: DeviceCapabilities, sidebarState: SettingsSidebarState) {
     self.capabilities = capabilities
+    self.sidebarState = sidebarState
     _chargingSettingsModel = State(initialValue: ChargingSettingsModel())
   }
 
   var body: some View {
-    NavigationSplitView(columnVisibility: $columnVisibility) {
+    NavigationSplitView(
+      columnVisibility: Binding(
+        get: { sidebarState.columnVisibility },
+        set: { sidebarState.columnVisibility = $0 }
+      )
+    ) {
       List(SettingsTab.allCases, selection: $selectedTab) { tab in
         SettingsSidebarRow(tab: tab, isSelected: selectedTab == tab)
           .tag(tab)
@@ -54,26 +60,7 @@ struct SettingsView: View {
         }
       }
     }
-    .toolbar {
-      ToolbarItem(placement: .navigation) {
-        Button {
-          toggleSidebar()
-        } label: {
-          Image(systemName: "sidebar.left")
-            .imageScale(.large)
-            .frame(width: 20, height: 20)
-        }
-        .buttonStyle(.borderless)
-        .controlSize(.regular)
-      }
-    }
     .frame(minWidth: 760, minHeight: 560)
-  }
-
-  private func toggleSidebar() {
-    withAnimation {
-      columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
-    }
   }
 }
 
@@ -84,6 +71,7 @@ struct SettingsView: View {
       adapterControl: true,
       hasMagSafe: true,
       magsafeLEDControl: true
-    )
+    ),
+    sidebarState: SettingsSidebarState()
   )
 }

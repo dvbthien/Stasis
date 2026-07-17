@@ -3,8 +3,11 @@ import Defaults
 import SwiftUI
 
 @MainActor
-final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate {
+    private static let sidebarToggleItemIdentifier = NSToolbarItem.Identifier("SidebarToggle")
+
     private let capabilities: DeviceCapabilities
+    private let sidebarState = SettingsSidebarState()
     private var pendingRestart: Task<Void, Never>?
 
     // Store device capabilities so every new Settings window gets the same hardware context.
@@ -49,7 +52,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     // Build the AppKit window that hosts the SwiftUI Settings view.
     private func makeSettingsWindow() -> NSWindow {
-        let settingsView = SettingsView(capabilities: capabilities)
+        let settingsView = SettingsView(capabilities: capabilities, sidebarState: sidebarState)
         let hostingController = NSHostingController(rootView: settingsView)
 
         let settingsWindow = NSWindow(contentViewController: hostingController)
@@ -60,7 +63,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settingsWindow.titlebarAppearsTransparent = true
         settingsWindow.isMovableByWindowBackground = true
         settingsWindow.toolbarStyle = .unifiedCompact
-        settingsWindow.toolbar = NSToolbar()
+        settingsWindow.toolbar = makeToolbar()
         settingsWindow.center()
         NSApp.setActivationPolicy(.regular)
         settingsWindow.orderFront(nil)
@@ -69,6 +72,52 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settingsWindow.delegate = self
 
         return settingsWindow
+    }
+
+    // Build a plain AppKit toolbar with a sidebar-toggle button. SwiftUI's
+    // `.toolbar` modifier content never reaches this manually created
+    // NSWindow, so the toggle is implemented purely in AppKit and drives
+    // the shared sidebar state that SettingsView's NavigationSplitView reads.
+    private func makeToolbar() -> NSToolbar {
+        let toolbar = NSToolbar(identifier: "SettingsToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.showsBaselineSeparator = false
+        return toolbar
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        guard itemIdentifier == Self.sidebarToggleItemIdentifier else { return nil }
+
+        let button = NSButton(
+            image: NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Toggle Sidebar")!,
+            target: self,
+            action: #selector(toggleSidebar)
+        )
+        button.isBordered = false
+        button.bezelStyle = .texturedRounded
+
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.view = button
+        item.label = ""
+        item.paletteLabel = "Toggle Sidebar"
+        return item
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [Self.sidebarToggleItemIdentifier]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [Self.sidebarToggleItemIdentifier]
+    }
+
+    @objc private func toggleSidebar() {
+        sidebarState.toggle()
     }
 
     // Release the hosted Settings UI and optionally schedule an app restart.
