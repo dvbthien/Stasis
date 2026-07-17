@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import stasis
+@testable import Stasis
 
 @MainActor
 final class ChargingNotificationTransitionTrackerTests: XCTestCase {

@@ -26,7 +26,7 @@ actor BatteryManagementEngine {
     private var isPreparedForUninstall = false
 
     private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis-daemon",
+        subsystem: Constants.Identity.daemon,
         category: "BatteryManagementEngine"
     )
 

@@ -4,6 +4,6 @@ import Foundation
 ///
 /// This surface intentionally exposes no capability probing and no SMC write
 /// operation. Charging-control capabilities remain authoritative in the daemon.
-@objc protocol SMCReaderHelperProtocol {
+@objc protocol StasisHelperProtocol {
     func readAllMetrics(reply: @escaping @Sendable (Data?, String?) -> Void)
 }

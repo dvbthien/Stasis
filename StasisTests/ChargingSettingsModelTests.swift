@@ -1,7 +1,7 @@
 import Observation
 import XCTest
 
-@testable import stasis
+@testable import Stasis
 
 @MainActor
 final class ChargingSettingsModelTests: XCTestCase {

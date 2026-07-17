@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "2630"
-   version = "1.7">
+   version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
@@ -16,8 +16,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A68B3E0B2F19AB4B00F115E4"
-               BuildableName = "stasis.app"
-               BlueprintName = "stasis"
+               BuildableName = "Stasis.app"
+               BlueprintName = "Stasis"
                ReferencedContainer = "container:stasis.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -55,8 +55,7 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES"
-      shouldAutocreateTestPlan = "NO">
+      shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
          <TestableReference
             skipped = "NO"
@@ -98,8 +97,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A68B3E0B2F19AB4B00F115E4"
-            BuildableName = "stasis.app"
-            BlueprintName = "stasis"
+            BuildableName = "Stasis.app"
+            BlueprintName = "Stasis"
             ReferencedContainer = "container:stasis.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -115,8 +114,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A68B3E0B2F19AB4B00F115E4"
-            BuildableName = "stasis.app"
-            BlueprintName = "stasis"
+            BuildableName = "Stasis.app"
+            BlueprintName = "Stasis"
             ReferencedContainer = "container:stasis.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

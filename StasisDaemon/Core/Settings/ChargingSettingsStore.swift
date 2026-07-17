@@ -3,7 +3,7 @@ import os.log
 
 actor ChargingSettingsStore {
     private static let loadLogger = Logger(
-        subsystem: "com.srimanachanta.stasis-daemon",
+        subsystem: Constants.Identity.daemon,
         category: "ChargingSettingsStore"
     )
     private enum Key {
@@ -22,7 +22,7 @@ actor ChargingSettingsStore {
 
     private let persistence: any ChargingSettingsPersisting
     private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis-daemon",
+        subsystem: Constants.Identity.daemon,
         category: "ChargingSettingsStore"
     )
 

@@ -8,7 +8,7 @@ protocol DaemonSleepAssertionControlling: Sendable {
 actor DaemonSleepAssertionController: DaemonSleepAssertionControlling {
     private var assertionID = IOPMAssertionID(kIOPMNullAssertionID)
     private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis-daemon",
+        subsystem: Constants.Identity.daemon,
         category: "SleepAssertion"
     )
 

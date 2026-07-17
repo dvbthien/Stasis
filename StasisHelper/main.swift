@@ -8,7 +8,7 @@ final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
         shouldAcceptNewConnection newConnection: NSXPCConnection
     ) -> Bool {
         newConnection.exportedInterface = NSXPCInterface(
-            with: (any SMCReaderHelperProtocol).self
+            with: (any StasisHelperProtocol).self
         )
         newConnection.exportedObject = helper
         newConnection.resume()

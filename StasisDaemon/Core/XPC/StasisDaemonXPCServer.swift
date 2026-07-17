@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked Sendable {
-    static let machServiceName = "com.srimanachanta.stasis-daemon"
+    static let machServiceName = Constants.Identity.daemon
 
     private let listener: NSXPCListener
     private let commandHandler: ChargingDaemonCommandHandler
@@ -17,7 +17,7 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
     private let activeConnectionsLock = NSLock()
     private var activeConnections: [UUID: NSXPCConnection] = [:]
     private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis-daemon",
+        subsystem: Constants.Identity.daemon,
         category: "XPCServer"
     )
 
@@ -26,7 +26,7 @@ final class StasisDaemonXPCServer: NSObject, NSXPCListenerDelegate, @unchecked S
         clientValidator: any DaemonClientValidating,
         clients: DaemonClientRegistry,
         listener: NSXPCListener = NSXPCListener(
-            machServiceName: "com.srimanachanta.stasis-daemon"
+            machServiceName: Constants.Identity.daemon
         )
     ) {
         self.commandHandler = commandHandler

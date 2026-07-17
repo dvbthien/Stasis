@@ -70,7 +70,7 @@ final class ChargingManagementController {
   private static let spinnerDelay: Duration = .milliseconds(150)
   private static let minimumSpinnerVisibleDuration: Duration = .milliseconds(300)
 
-  private let helperManager: ChargingDaemonManager
+  private let daemonManager: ChargingDaemonManager
   private let logger = Logger.stasis("ChargingManagementController")
 
   private var enableTask: Task<Void, Never>?
@@ -93,8 +93,8 @@ final class ChargingManagementController {
       || pendingLoadingState?.isDeterminingDaemonStatus == true
   }
 
-  init(helperManager: ChargingDaemonManager = .shared) {
-    self.helperManager = helperManager
+  init(daemonManager: ChargingDaemonManager = .shared) {
+    self.daemonManager = daemonManager
   }
 
   func requestEnable(
@@ -149,8 +149,8 @@ final class ChargingManagementController {
     hasAnyControl: Bool,
     setManageCharging: @escaping @MainActor (Bool) -> Void
   ) {
-    helperManager.refreshStatus()
-    if helperManager.helperStatus == .installed, enableRequested {
+    daemonManager.refreshStatus()
+    if daemonManager.daemonStatus == .installed, enableRequested {
       requestEnable(
         hasAnyControl: hasAnyControl,
         setManageCharging: setManageCharging
@@ -164,8 +164,8 @@ final class ChargingManagementController {
   ) {
     guard manageCharging else { return }
 
-    if helperManager.helperStatus == .installed,
-       helperManager.connectionStatus == .connecting {
+    if daemonManager.daemonStatus == .installed,
+       daemonManager.connectionStatus == .connecting {
       // Still connecting at startup; handleConnectionStatusChange will
       // resolve to .ready or .failed once the connection settles.
       return
@@ -173,8 +173,8 @@ final class ChargingManagementController {
 
     guard
       hasAnyControl,
-      helperManager.helperStatus == .installed,
-      helperManager.connectionStatus == .connected
+      daemonManager.daemonStatus == .installed,
+      daemonManager.connectionStatus == .connected
     else {
       flowState = .failed("Charging daemon is unavailable; existing management state was preserved.")
       return
@@ -192,20 +192,20 @@ final class ChargingManagementController {
 
   private func repairDaemonIfOutdated() async {
     do {
-      try await helperManager.verifyConnection()
+      try await daemonManager.verifyConnection()
       try Task.checkCancellation()
-      guard helperManager.isDaemonOutdated else { return }
+      guard daemonManager.isDaemonOutdated else { return }
 
       scheduleSpinner(for: .repairing)
-      _ = try await helperManager.repairDaemonIfOutdated()
+      _ = try await daemonManager.repairDaemonIfOutdated()
       try Task.checkCancellation()
       await finishSpinnerIfNeeded()
       guard !Task.isCancelled else { return }
-      if helperManager.helperStatus == .installed,
-         helperManager.connectionStatus == .connected {
+      if daemonManager.daemonStatus == .installed,
+         daemonManager.connectionStatus == .connected {
         flowState = .ready
       } else {
-        handleUnavailableHelperAfterRepair()
+        handleUnavailableDaemonAfterRepair()
       }
     } catch is CancellationError {
       // A newer flow owns the shared spinner state now; leave it alone.
@@ -218,8 +218,8 @@ final class ChargingManagementController {
     }
   }
 
-  func handleHelperStatusChange(
-    _ newStatus: ChargingHelperStatus
+  func handleDaemonStatusChange(
+    _ newStatus: ChargingDaemonStatus
   ) {
     guard enableRequested else { return }
 
@@ -269,31 +269,31 @@ final class ChargingManagementController {
     setManageCharging: @escaping @MainActor (Bool) -> Void
   ) async {
     do {
-      if helperManager.helperStatus != .installed {
+      if daemonManager.daemonStatus != .installed {
         scheduleSpinner(for: .installing)
-        try helperManager.install()
+        try daemonManager.install()
       } else {
-        helperManager.refreshStatus()
+        daemonManager.refreshStatus()
       }
 
       try Task.checkCancellation()
 
-      switch helperManager.helperStatus {
+      switch daemonManager.daemonStatus {
       case .installed:
         guard enableRequested else { return }
         scheduleSpinner(for: .verifying)
-        try await verifyInstalledHelper()
+        try await verifyInstalledDaemon()
         try Task.checkCancellation()
 
-        guard helperManager.helperStatus == .installed else {
+        guard daemonManager.daemonStatus == .installed else {
           guard generation == enableGeneration else { return }
           await finishSpinnerIfNeeded()
           guard generation == enableGeneration else { return }
-          handleUnavailableHelperAfterRepair()
+          handleUnavailableDaemonAfterRepair()
           return
         }
-        guard helperManager.connectionStatus == .connected else {
-          throw XPCError.helperUnavailable
+        guard daemonManager.connectionStatus == .connected else {
+          throw XPCError.serviceUnavailable
         }
 
         guard generation == enableGeneration else { return }
@@ -332,7 +332,7 @@ final class ChargingManagementController {
   private func uninstallDaemon(settingsModel: ChargingSettingsModel) async {
     do {
       try await settingsModel.disableManagementForDaemonUninstall()
-      try await helperManager.uninstall()
+      try await daemonManager.uninstall()
       flowState = .idle
     } catch {
       logger.error("Failed to uninstall charging daemon: \(error)")
@@ -341,9 +341,9 @@ final class ChargingManagementController {
     uninstallTask = nil
   }
 
-  private func verifyInstalledHelper() async throws {
+  private func verifyInstalledDaemon() async throws {
     do {
-      try await helperManager.verifyConnection()
+      try await daemonManager.verifyConnection()
     } catch {
       guard shouldRepairAfterVerifyFailure else {
         throw error
@@ -354,22 +354,22 @@ final class ChargingManagementController {
       return
     }
 
-    if helperManager.isDaemonOutdated {
+    if daemonManager.isDaemonOutdated {
       scheduleSpinner(for: .repairing)
-      _ = try await helperManager.repairDaemonIfOutdated()
+      _ = try await daemonManager.repairDaemonIfOutdated()
     }
   }
 
   private func repairAndReverify() async throws {
     scheduleSpinner(for: .repairing)
-    try await helperManager.repairInstallation()
-    guard helperManager.helperStatus == .installed else { return }
+    try await daemonManager.repairInstallation()
+    guard daemonManager.daemonStatus == .installed else { return }
     scheduleSpinner(for: .verifying)
-    try await helperManager.verifyConnection()
+    try await daemonManager.verifyConnection()
   }
 
   private var shouldRepairAfterVerifyFailure: Bool {
-    switch helperManager.connectionStatus {
+    switch daemonManager.connectionStatus {
     case .startupFailed, .invalidated, .disconnected:
       true
     case .connecting, .connected, .interrupted, .runtimeFailed:
@@ -377,8 +377,8 @@ final class ChargingManagementController {
     }
   }
 
-  private func handleUnavailableHelperAfterRepair() {
-    switch helperManager.helperStatus {
+  private func handleUnavailableDaemonAfterRepair() {
+    switch daemonManager.daemonStatus {
     case .installed:
       flowState = .idle
     case .requiresApproval:

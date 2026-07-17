@@ -47,7 +47,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Ready",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: true,
       isVerifying: false,
@@ -56,11 +56,11 @@ private struct ChargingSettingsPreviewContainer: View {
   )
 }
 
-#Preview("Manage Off Helper Ready") {
+#Preview("Manage Off Daemon Ready") {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
-      title: "Manage Off Helper Ready",
-      helperStatus: .installed,
+      title: "Manage Off Daemon Ready",
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: false,
       isVerifying: false,
@@ -73,7 +73,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Removing Background Service",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: false,
       isVerifying: false,
@@ -87,7 +87,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Remove Background Service Failed",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: false,
       isVerifying: false,
@@ -97,15 +97,15 @@ private struct ChargingSettingsPreviewContainer: View {
   )
 }
 
-#Preview("Checking Helper") {
+#Preview("Checking Daemon") {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
-      title: "Checking Helper",
-      helperStatus: .installed,
+      title: "Checking Daemon",
+      daemonStatus: .installed,
       connectionStatus: .connecting,
       manageCharging: false,
       isVerifying: true,
-      errorMessage: "Checking Helper"
+      errorMessage: "Checking Daemon"
     )
   )
 }
@@ -114,7 +114,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Connecting",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connecting,
       manageCharging: false,
       isVerifying: false,
@@ -127,7 +127,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Disconnected",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .disconnected,
       manageCharging: false,
       isVerifying: false,
@@ -140,7 +140,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Invalidated",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .invalidated,
       manageCharging: false,
       isVerifying: false,
@@ -153,7 +153,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Requires Approval",
-      helperStatus: .requiresApproval,
+      daemonStatus: .requiresApproval,
       connectionStatus: .disconnected,
       manageCharging: false,
       isVerifying: false,
@@ -166,7 +166,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Inactive Daemon",
-      helperStatus: .notInstalled,
+      daemonStatus: .notInstalled,
       connectionStatus: .disconnected,
       manageCharging: false,
       isVerifying: false,
@@ -175,11 +175,11 @@ private struct ChargingSettingsPreviewContainer: View {
   )
 }
 
-#Preview("Setting Up Helper") {
+#Preview("Setting Up Daemon") {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
-      title: "Setting Up Helper",
-      helperStatus: .notInstalled,
+      title: "Setting Up Daemon",
+      daemonStatus: .notInstalled,
       connectionStatus: .disconnected,
       manageCharging: false,
       isVerifying: true,
@@ -192,7 +192,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Startup Failed",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .startupFailed(
         "Charging daemon did not respond while verify charging daemon."),
       manageCharging: false,
@@ -206,7 +206,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Runtime Interrupted",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .interrupted,
       manageCharging: false,
       isVerifying: false,
@@ -219,7 +219,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Runtime Failed",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .runtimeFailed(
         "Charging daemon did not respond while manage battery charging."),
       manageCharging: false,
@@ -233,7 +233,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Adapter Unsupported",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: true,
       isVerifying: false,
@@ -247,7 +247,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "Charging Unsupported",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: true,
       isVerifying: false,
@@ -261,7 +261,7 @@ private struct ChargingSettingsPreviewContainer: View {
   ChargingSettingsPreviewContainer(
     state: ChargingSettingsPreviewState(
       title: "MagSafe LED Unsupported",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: true,
       isVerifying: false,
@@ -281,7 +281,7 @@ private struct ChargingSettingsPreviewContainer: View {
     ),
     previewState: ChargingSettingsPreviewState(
       title: "Unsupported",
-      helperStatus: .installed,
+      daemonStatus: .installed,
       connectionStatus: .connected,
       manageCharging: false,
       isVerifying: false,

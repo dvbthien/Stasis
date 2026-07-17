@@ -829,6 +829,12 @@
         }
       }
     },
+    "Charging service" : {
+
+    },
+    "Charging service status: %@" : {
+
+    },
     "Charging status changed" : {
       "localizations" : {
         "de" : {
@@ -909,7 +915,13 @@
         }
       }
     },
+    "Checking" : {
+
+    },
     "Choose which live battery and power metrics appear in the menu bar dropdown." : {
+
+    },
+    "Connection Issue" : {
 
     },
     "Control how Stasis starts, appears in the menu bar, and sends notifications." : {
@@ -955,16 +967,16 @@
         }
       }
     },
-    "Provides charging status in the background and applies policies when Manage charging is enabled." : {
-
-    },
-    "Couldn’t remove the background service." : {
-
-    },
     "Couldn’t save automatic discharge settings." : {
 
     },
     "Couldn’t save battery reading settings." : {
+
+    },
+    "Couldn’t save charge limit." : {
+
+    },
+    "Couldn’t save charge management settings." : {
 
     },
     "Couldn’t save heat protection settings." : {
@@ -1058,27 +1070,6 @@
           }
         }
       }
-    },
-    "Charging Service" : {
-
-    },
-    "Charging service status: %@" : {
-
-    },
-    "Checking" : {
-
-    },
-    "Connection Issue" : {
-
-    },
-    "Needs Approval" : {
-
-    },
-    "Not Installed" : {
-
-    },
-    "Ready" : {
-
     },
     "Dashboard" : {
       "localizations" : {
@@ -1858,6 +1849,9 @@
         }
       }
     },
+    "Needs Approval" : {
+
+    },
     "Next to icon" : {
       "localizations" : {
         "vi" : {
@@ -1869,6 +1863,9 @@
       }
     },
     "Not Charging" : {
+
+    },
+    "Not Installed" : {
 
     },
     "Notifications" : {
@@ -2213,6 +2210,9 @@
         }
       }
     },
+    "Provides charging status in the background and applies policies when Manage charging is enabled." : {
+
+    },
     "Quit" : {
       "localizations" : {
         "de" : {
@@ -2252,6 +2252,9 @@
           }
         }
       }
+    },
+    "Ready" : {
+
     },
     "Reconnect" : {
 

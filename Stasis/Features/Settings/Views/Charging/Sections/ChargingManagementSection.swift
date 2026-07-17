@@ -15,7 +15,7 @@ struct ChargingManagementSection: View {
   let shouldShowApprovalPrompt: Bool
   let displayedStatusMessage: String?
   let uninstallErrorMessage: String?
-  let helperStatus: ChargingHelperStatus
+  let daemonStatus: ChargingDaemonStatus
   let connectionStatus: ChargingDaemonConnectionStatus
   let setManageCharging: (Bool) -> Void
   let openApprovalSettings: () -> Void
@@ -45,7 +45,7 @@ struct ChargingManagementSection: View {
 
   private var serviceStatusPresentation: ChargingServiceStatusPresentation {
     ChargingServiceStatusPresentation(
-      helperStatus: helperStatus,
+      daemonStatus: daemonStatus,
       connectionStatus: connectionStatus,
       isDeterminingStatus: isDeterminingDaemonStatus,
       hasOperationError: displayedStatusMessage != nil

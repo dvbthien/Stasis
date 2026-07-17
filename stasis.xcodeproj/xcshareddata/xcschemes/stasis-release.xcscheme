@@ -16,8 +16,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A68B3E0B2F19AB4B00F115E4"
-               BuildableName = "stasis.app"
-               BlueprintName = "stasis"
+               BuildableName = "Stasis.app"
+               BlueprintName = "Stasis"
                ReferencedContainer = "container:stasis.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -45,8 +45,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A68B3E0B2F19AB4B00F115E4"
-            BuildableName = "stasis.app"
-            BlueprintName = "stasis"
+            BuildableName = "Stasis.app"
+            BlueprintName = "Stasis"
             ReferencedContainer = "container:stasis.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -62,8 +62,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A68B3E0B2F19AB4B00F115E4"
-            BuildableName = "stasis.app"
-            BlueprintName = "stasis"
+            BuildableName = "Stasis.app"
+            BlueprintName = "Stasis"
             ReferencedContainer = "container:stasis.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

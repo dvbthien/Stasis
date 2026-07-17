@@ -81,7 +81,7 @@ struct DaemonClientValidator: DaemonClientValidating {
 }
 
 enum StasisCodeSigningRequirement {
-    static let appIdentifier = "com.srimanachanta.stasis"
+    static let appIdentifier = Constants.Identity.app
 
     static func make(teamIdentifier: String?, debugBuild: Bool) -> String {
         var clauses = ["identifier \"\(appIdentifier)\""]

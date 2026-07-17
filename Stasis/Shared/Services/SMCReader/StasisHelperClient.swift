@@ -2,13 +2,13 @@ import Foundation
 import os.log
 
 @MainActor
-final class SMCReaderHelperClient {
-    static let shared = SMCReaderHelperClient()
+final class StasisHelperClient {
+    static let shared = StasisHelperClient()
 
-    private static let serviceName = "com.srimanachanta.stasis.SMCReaderHelper"
+    private static let serviceName = Constants.Identity.smcReaderService
 
     private var connection: NSXPCConnection?
-    private let logger = Logger.stasis("SMCReaderHelperClient")
+    private let logger = Logger.stasis("StasisHelperClient")
 
     func readAllMetrics() async throws -> SMCTelemetryMetrics {
         let payload = try await execute("Read SMC telemetry metrics") { helper, reply in
@@ -24,12 +24,12 @@ final class SMCReaderHelperClient {
 
     private func helperProxy(
         errorHandler: @escaping @Sendable (Error) -> Void
-    ) -> SMCReaderHelperProtocol? {
+    ) -> StasisHelperProtocol? {
         if connection == nil {
             logger.debug("Opening SMC reader helper connection")
             let newConnection = NSXPCConnection(serviceName: Self.serviceName)
             newConnection.remoteObjectInterface = NSXPCInterface(
-                with: (any SMCReaderHelperProtocol).self
+                with: (any StasisHelperProtocol).self
             )
             newConnection.invalidationHandler = { [weak self] in
                 Task { @MainActor in
@@ -46,13 +46,13 @@ final class SMCReaderHelperClient {
         }
 
         return connection?.remoteObjectProxyWithErrorHandler(errorHandler)
-            as? SMCReaderHelperProtocol
+            as? StasisHelperProtocol
     }
 
     private func execute(
         _ label: String,
         operation: @escaping (
-            SMCReaderHelperProtocol,
+            StasisHelperProtocol,
             @escaping @Sendable (Data?, String?) -> Void
         ) -> Void
     ) async throws -> Data {
@@ -67,7 +67,7 @@ final class SMCReaderHelperClient {
                     }
                 })
             else {
-                completion.resume(throwing: XPCError.helperUnavailable)
+                completion.resume(throwing: XPCError.serviceUnavailable)
                 return
             }
 

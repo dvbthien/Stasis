@@ -25,7 +25,8 @@ enum DaemonBuildIdentity {
             buffer = [CChar](repeating: 0, count: Int(capacity))
             guard _NSGetExecutablePath(&buffer, &capacity) == 0 else { return nil }
         }
-        let url = URL(fileURLWithPath: String(cString: buffer))
+        let pathBytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        let url = URL(fileURLWithPath: String(decoding: pathBytes, as: UTF8.self))
             .resolvingSymlinksInPath()
         return executableHash(at: url)
     }

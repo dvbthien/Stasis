@@ -1,6 +1,6 @@
 struct ChargingSettingsPreviewState {
   let title: String
-  let helperStatus: ChargingHelperStatus
+  let daemonStatus: ChargingDaemonStatus
   let connectionStatus: ChargingDaemonConnectionStatus
   let manageCharging: Bool
   let isVerifying: Bool
@@ -10,7 +10,7 @@ struct ChargingSettingsPreviewState {
 
   init(
     title: String,
-    helperStatus: ChargingHelperStatus,
+    daemonStatus: ChargingDaemonStatus,
     connectionStatus: ChargingDaemonConnectionStatus,
     manageCharging: Bool,
     isVerifying: Bool,
@@ -19,7 +19,7 @@ struct ChargingSettingsPreviewState {
     uninstallErrorMessage: String? = nil
   ) {
     self.title = title
-    self.helperStatus = helperStatus
+    self.daemonStatus = daemonStatus
     self.connectionStatus = connectionStatus
     self.manageCharging = manageCharging
     self.isVerifying = isVerifying

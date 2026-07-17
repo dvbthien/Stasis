@@ -4,7 +4,7 @@ import os.log
 import smc_power
 
 let logger = Logger(
-    subsystem: "com.srimanachanta.stasis-daemon",
+    subsystem: Constants.Identity.daemon,
     category: "DaemonStartup"
 )
 
@@ -27,7 +27,7 @@ let daemonVersion = Bundle.main.object(
     forInfoDictionaryKey: "CFBundleShortVersionString"
 ) as? String ?? "1.0"
 let daemonExecutableHash = DaemonBuildIdentity.currentExecutableHash()
-let hardware = ChargingHelper(battery: battery, adapter: adapter)
+let hardware = ChargingHardware(battery: battery, adapter: adapter)
 let clients = DaemonClientRegistry()
 
 let settingsStore = ChargingSettingsStore(

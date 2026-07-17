@@ -2,11 +2,11 @@ import Foundation
 import os.log
 import smc_power
 
-actor ChargingHelper: DaemonHardwareControlling {
+actor ChargingHardware: DaemonHardwareControlling {
   private let battery: SMCBattery
   private let adapter: SMCAdapter
   private let logger = Logger(
-    subsystem: "com.srimanachanta.stasis-daemon",
+    subsystem: Constants.Identity.daemon,
     category: "ChargingHardware"
   )
 

@@ -17,7 +17,7 @@ struct ChargingServiceStatusPresentation: Equatable {
     let canRemoveService: Bool
 
     init(
-        helperStatus: ChargingHelperStatus,
+        daemonStatus: ChargingDaemonStatus,
         connectionStatus: ChargingDaemonConnectionStatus,
         isDeterminingStatus: Bool,
         hasOperationError: Bool
@@ -29,7 +29,7 @@ struct ChargingServiceStatusPresentation: Equatable {
             return
         }
 
-        switch helperStatus {
+        switch daemonStatus {
         case .notInstalled:
             status = .notInstalled
             recoveryAction = hasOperationError ? .tryAgain : nil

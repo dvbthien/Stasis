@@ -15,7 +15,7 @@ class BatteryService {
 
   private let ioKitService = IOKitService()
   private let daemonManager = ChargingDaemonManager.shared
-  private let smcReader = SMCReaderHelperClient.shared
+  private let smcReader = StasisHelperClient.shared
 
   private var ioKitMonitorTask: Task<Void, Never>?
   private var smcTelemetryTask: Task<Void, Never>?

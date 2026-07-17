@@ -11,7 +11,7 @@
 		A66D62D92F44069300B996E7 /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
 		A66D62E22F44076F00B996E7 /* SMCKit in Frameworks */ = {isa = PBXBuildFile; productRef = A66D62E12F44076F00B996E7 /* SMCKit */; };
 		A6AE198A2F480D41003B09FA /* smc_power.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		A6B100092F5A000000000009 /* SMCReaderHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A6B100082F5A000000000008 /* SMCReaderHelper.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		A6B100092F5A000000000009 /* StasisHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = A6B100082F5A000000000008 /* StasisHelper.xpc */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A6B1000D2F5A00000000000D /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
 		A6E6D7322F3A00000069CF9F /* StasisDaemon in Copy Helper Tools */ = {isa = PBXBuildFile; fileRef = A6E6D71E2F39DD350069CF9F /* StasisDaemon */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A6F2000C2F5100000000000C /* smc_power.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A66D62CE2F44067C00B996E7 /* smc_power.framework */; };
@@ -30,7 +30,7 @@
 			containerPortal = A68B3E042F19AB4B00F115E4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A6B100022F5A000000000002;
-			remoteInfo = SMCReaderHelper;
+			remoteInfo = StasisHelper;
 		};
 		A6B100132F5A000000000013 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -44,7 +44,7 @@
 			containerPortal = A68B3E042F19AB4B00F115E4 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A6E6D71D2F39DD350069CF9F;
-			remoteInfo = "charging-helper";
+			remoteInfo = StasisDaemon;
 		};
 		A6F1000B2F5000000000000B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -80,7 +80,7 @@
 			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
 			dstSubfolderSpec = 16;
 			files = (
-				A6B100092F5A000000000009 /* SMCReaderHelper.xpc in Embed XPC Services */,
+				A6B100092F5A000000000009 /* StasisHelper.xpc in Embed XPC Services */,
 			);
 			name = "Embed XPC Services";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -101,27 +101,27 @@
 /* Begin PBXFileReference section */
 		A66D62CE2F44067C00B996E7 /* smc_power.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = smc_power.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A67470412FA4F4EA00925FF2 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		A68B3E0C2F19AB4B00F115E4 /* stasis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = stasis.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A6B100082F5A000000000008 /* SMCReaderHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = SMCReaderHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		A68B3E0C2F19AB4B00F115E4 /* Stasis.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Stasis.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A6B100082F5A000000000008 /* StasisHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = StasisHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6E6D71E2F39DD350069CF9F /* StasisDaemon */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = StasisDaemon; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6F100032F50000000000003 /* StasisTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StasisTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6F200022F51000000000002 /* StasisDaemonTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StasisDaemonTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		A6B100152F5A000000000015 /* Exceptions for "SMCReaderHelper" folder in "SMCReaderHelper" target */ = {
+		A6B100152F5A000000000015 /* Exceptions for "StasisHelper" folder in "StasisHelper" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = A6B100022F5A000000000002 /* SMCReaderHelper */;
+			target = A6B100022F5A000000000002 /* StasisHelper */;
 		};
-		A6F700012F57000000000001 /* Exceptions for "Shared" folder in "stasis" target */ = {
+		A6F700012F57000000000001 /* Exceptions for "Shared" folder in "Stasis" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Policy/ChargingPolicy.swift,
 			);
-			target = A68B3E0B2F19AB4B00F115E4 /* stasis */;
+			target = A68B3E0B2F19AB4B00F115E4 /* Stasis */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -136,23 +136,23 @@
 			path = Stasis;
 			sourceTree = "<group>";
 		};
-		A6B100012F5A000000000001 /* SMCReaderHelper */ = {
+		A6B100012F5A000000000001 /* StasisHelper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				A6B100152F5A000000000015 /* Exceptions for "SMCReaderHelper" folder in "SMCReaderHelper" target */,
+				A6B100152F5A000000000015 /* Exceptions for "StasisHelper" folder in "StasisHelper" target */,
 			);
-			path = SMCReaderHelper;
+			path = StasisHelper;
 			sourceTree = "<group>";
 		};
-		A6E6D71F2F39DD350069CF9F /* ChargingHelper */ = {
+		A6E6D71F2F39DD350069CF9F /* StasisDaemon */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ChargingHelper;
+			path = StasisDaemon;
 			sourceTree = "<group>";
 		};
 		A6F100012F50000000000001 /* Shared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				A6F700012F57000000000001 /* Exceptions for "Shared" folder in "stasis" target */,
+				A6F700012F57000000000001 /* Exceptions for "Shared" folder in "Stasis" target */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -162,9 +162,9 @@
 			path = StasisTests;
 			sourceTree = "<group>";
 		};
-		A6F200012F51000000000001 /* ChargingHelper/Core */ = {
+		A6F200012F51000000000001 /* StasisDaemon/Core */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ChargingHelper/Core;
+			path = StasisDaemon/Core;
 			sourceTree = "<group>";
 		};
 		A6F2000D2F5100000000000D /* StasisDaemonTests */ = {
@@ -233,8 +233,8 @@
 				A68B3E0E2F19AB4B00F115E4 /* Stasis */,
 				A6F100022F50000000000002 /* StasisTests */,
 				A6F2000D2F5100000000000D /* StasisDaemonTests */,
-				A6E6D71F2F39DD350069CF9F /* ChargingHelper */,
-				A6B100012F5A000000000001 /* SMCReaderHelper */,
+				A6E6D71F2F39DD350069CF9F /* StasisDaemon */,
+				A6B100012F5A000000000001 /* StasisHelper */,
 				A66D62CF2F44067C00B996E7 /* SMCPower */,
 				A68B3E532F1A942600F115E4 /* Frameworks */,
 				A68B3E0D2F19AB4B00F115E4 /* Products */,
@@ -245,9 +245,9 @@
 		A68B3E0D2F19AB4B00F115E4 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A68B3E0C2F19AB4B00F115E4 /* stasis.app */,
+				A68B3E0C2F19AB4B00F115E4 /* Stasis.app */,
 				A6E6D71E2F39DD350069CF9F /* StasisDaemon */,
-				A6B100082F5A000000000008 /* SMCReaderHelper.xpc */,
+				A6B100082F5A000000000008 /* StasisHelper.xpc */,
 				A66D62CE2F44067C00B996E7 /* smc_power.framework */,
 				A6F100032F50000000000003 /* StasisTests.xctest */,
 				A6F200022F51000000000002 /* StasisDaemonTests.xctest */,
@@ -265,7 +265,7 @@
 		FD3227CC3004D2A500549078 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
-				A6F200012F51000000000001 /* ChargingHelper/Core */,
+				A6F200012F51000000000001 /* StasisDaemon/Core */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -307,9 +307,9 @@
 			productReference = A66D62CE2F44067C00B996E7 /* smc_power.framework */;
 			productType = "com.apple.product-type.framework";
 		};
-		A68B3E0B2F19AB4B00F115E4 /* stasis */ = {
+		A68B3E0B2F19AB4B00F115E4 /* Stasis */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A68B3E172F19AB4C00F115E4 /* Build configuration list for PBXNativeTarget "stasis" */;
+			buildConfigurationList = A68B3E172F19AB4C00F115E4 /* Build configuration list for PBXNativeTarget "Stasis" */;
 			buildPhases = (
 				A68B3E082F19AB4B00F115E4 /* Sources */,
 				A68B3E092F19AB4B00F115E4 /* Frameworks */,
@@ -329,17 +329,17 @@
 				A68B3E0E2F19AB4B00F115E4 /* Stasis */,
 				A6F100012F50000000000001 /* Shared */,
 			);
-			name = stasis;
+			name = Stasis;
 			packageProductDependencies = (
 				A6638F802F1C0FD60047FA8E /* Defaults */,
 			);
-			productName = stasis;
-			productReference = A68B3E0C2F19AB4B00F115E4 /* stasis.app */;
+			productName = Stasis;
+			productReference = A68B3E0C2F19AB4B00F115E4 /* Stasis.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A6B100022F5A000000000002 /* SMCReaderHelper */ = {
+		A6B100022F5A000000000002 /* StasisHelper */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A6B100102F5A000000000010 /* Build configuration list for PBXNativeTarget "SMCReaderHelper" */;
+			buildConfigurationList = A6B100102F5A000000000010 /* Build configuration list for PBXNativeTarget "StasisHelper" */;
 			buildPhases = (
 				A6B100032F5A000000000003 /* Sources */,
 				A6B100052F5A000000000005 /* Frameworks */,
@@ -351,19 +351,19 @@
 				A6B100142F5A000000000014 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				A6B100012F5A000000000001 /* SMCReaderHelper */,
+				A6B100012F5A000000000001 /* StasisHelper */,
 				A6F100012F50000000000001 /* Shared */,
 			);
-			name = SMCReaderHelper;
+			name = StasisHelper;
 			packageProductDependencies = (
 			);
-			productName = SMCReaderHelper;
-			productReference = A6B100082F5A000000000008 /* SMCReaderHelper.xpc */;
+			productName = StasisHelper;
+			productReference = A6B100082F5A000000000008 /* StasisHelper.xpc */;
 			productType = "com.apple.product-type.xpc-service";
 		};
-		A6E6D71D2F39DD350069CF9F /* stasis-daemon */ = {
+		A6E6D71D2F39DD350069CF9F /* StasisDaemon */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "stasis-daemon" */;
+			buildConfigurationList = A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "StasisDaemon" */;
 			buildPhases = (
 				A6E6D71A2F39DD350069CF9F /* Sources */,
 				A6E6D71B2F39DD350069CF9F /* Frameworks */,
@@ -374,13 +374,13 @@
 				A66D62DC2F44069300B996E7 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				A6E6D71F2F39DD350069CF9F /* ChargingHelper */,
+				A6E6D71F2F39DD350069CF9F /* StasisDaemon */,
 				A6F100012F50000000000001 /* Shared */,
 			);
-			name = "stasis-daemon";
+			name = StasisDaemon;
 			packageProductDependencies = (
 			);
-			productName = "charging-helper";
+			productName = StasisDaemon;
 			productReference = A6E6D71E2F39DD350069CF9F /* StasisDaemon */;
 			productType = "com.apple.product-type.tool";
 		};
@@ -422,7 +422,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				A6F100012F50000000000001 /* Shared */,
-				A6F200012F51000000000001 /* ChargingHelper/Core */,
+				A6F200012F51000000000001 /* StasisDaemon/Core */,
 				A6F2000D2F5100000000000D /* StasisDaemonTests */,
 			);
 			name = StasisDaemonTests;
@@ -486,9 +486,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A68B3E0B2F19AB4B00F115E4 /* stasis */,
-				A6B100022F5A000000000002 /* SMCReaderHelper */,
-				A6E6D71D2F39DD350069CF9F /* stasis-daemon */,
+				A68B3E0B2F19AB4B00F115E4 /* Stasis */,
+				A6B100022F5A000000000002 /* StasisHelper */,
+				A6E6D71D2F39DD350069CF9F /* StasisDaemon */,
 				A66D62CD2F44067C00B996E7 /* smc-power */,
 				A6F100042F50000000000004 /* StasisTests */,
 				A6F200032F51000000000003 /* StasisDaemonTests */,
@@ -541,7 +541,7 @@
 			files = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/ChargingHelper/com.srimanachanta.stasis-daemon.plist",
+				"$(SRCROOT)/StasisDaemon/com.srimanachanta.stasis-daemon.plist",
 			);
 			name = "Copy LaunchDaemon Plist";
 			outputPaths = (
@@ -549,7 +549,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "mkdir -p \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons\"\ncp \"${SRCROOT}/ChargingHelper/com.srimanachanta.stasis-daemon.plist\" \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons/\"\n";
+			shellScript = "mkdir -p \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons\"\ncp \"${SRCROOT}/StasisDaemon/com.srimanachanta.stasis-daemon.plist\" \"${BUILT_PRODUCTS_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchDaemons/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -606,7 +606,7 @@
 		};
 		A6B1000B2F5A00000000000B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A6B100022F5A000000000002 /* SMCReaderHelper */;
+			target = A6B100022F5A000000000002 /* StasisHelper */;
 			targetProxy = A6B1000A2F5A00000000000A /* PBXContainerItemProxy */;
 		};
 		A6B100142F5A000000000014 /* PBXTargetDependency */ = {
@@ -616,12 +616,12 @@
 		};
 		A6E6D7312F3A00000069CF9F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A6E6D71D2F39DD350069CF9F /* stasis-daemon */;
+			target = A6E6D71D2F39DD350069CF9F /* StasisDaemon */;
 			targetProxy = A6E6D7302F3A00000069CF9F /* PBXContainerItemProxy */;
 		};
 		A6F1000C2F5000000000000C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A68B3E0B2F19AB4B00F115E4 /* stasis */;
+			target = A68B3E0B2F19AB4B00F115E4 /* Stasis */;
 			targetProxy = A6F1000B2F5000000000000B /* PBXContainerItemProxy */;
 		};
 		A6F2000B2F5100000000000B /* PBXTargetDependency */ = {
@@ -648,6 +648,7 @@
 				ENABLE_MODULE_VERIFIER = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -691,6 +692,7 @@
 				ENABLE_MODULE_VERIFIER = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -864,6 +866,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Stasis;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -901,6 +904,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Stasis;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -934,7 +938,8 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SMCReaderHelper/Info.plist;
+				INFOPLIST_FILE = StasisHelper/Info.plist;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../../../../Frameworks",
@@ -942,8 +947,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.SMCReaderHelper;
-				PRODUCT_NAME = SMCReaderHelper;
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.StasisHelper;
+				PRODUCT_NAME = StasisHelper;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -962,7 +967,8 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = SMCReaderHelper/Info.plist;
+				INFOPLIST_FILE = StasisHelper/Info.plist;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../../../../Frameworks",
@@ -970,8 +976,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.SMCReaderHelper;
-				PRODUCT_NAME = SMCReaderHelper;
+				PRODUCT_BUNDLE_IDENTIFIER = com.srimanachanta.stasis.StasisHelper;
+				PRODUCT_NAME = StasisHelper;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -991,6 +997,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis-daemon";
@@ -1013,6 +1020,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.8;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.srimanachanta.stasis-daemon";
@@ -1033,6 +1041,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1046,7 +1055,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/stasis.app/Contents/MacOS/stasis";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Stasis.app/Contents/MacOS/Stasis";
 			};
 			name = Debug;
 		};
@@ -1058,6 +1067,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -1071,7 +1081,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/stasis.app/Contents/MacOS/stasis";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Stasis.app/Contents/MacOS/Stasis";
 			};
 			name = Release;
 		};
@@ -1082,6 +1092,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@loader_path/../Frameworks",
@@ -1104,6 +1115,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@loader_path/../Frameworks",
@@ -1140,7 +1152,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A68B3E172F19AB4C00F115E4 /* Build configuration list for PBXNativeTarget "stasis" */ = {
+		A68B3E172F19AB4C00F115E4 /* Build configuration list for PBXNativeTarget "Stasis" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A68B3E182F19AB4C00F115E4 /* Debug */,
@@ -1149,7 +1161,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A6B100102F5A000000000010 /* Build configuration list for PBXNativeTarget "SMCReaderHelper" */ = {
+		A6B100102F5A000000000010 /* Build configuration list for PBXNativeTarget "StasisHelper" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A6B100112F5A000000000011 /* Debug */,
@@ -1158,7 +1170,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "stasis-daemon" */ = {
+		A6E6D7222F39DD350069CF9F /* Build configuration list for PBXNativeTarget "StasisDaemon" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A6E6D7232F39DD350069CF9F /* Debug */,

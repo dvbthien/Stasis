@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChargingSettingsView: View {
-    @State private var helperManager = ChargingDaemonManager.shared
+    @State private var daemonManager = ChargingDaemonManager.shared
     @State private var chargingController = ChargingManagementController()
     @State private var showsUninstallConfirmation = false
     @Bindable var settingsModel: ChargingSettingsModel
@@ -78,12 +78,12 @@ struct ChargingSettingsView: View {
             ?? fallbackCapabilities.magsafeLEDControl
     }
 
-    private var helperStatus: ChargingHelperStatus {
-        previewState?.helperStatus ?? helperManager.helperStatus
+    private var daemonStatus: ChargingDaemonStatus {
+        previewState?.daemonStatus ?? daemonManager.daemonStatus
     }
 
     private var connectionStatus: ChargingDaemonConnectionStatus {
-        previewState?.connectionStatus ?? helperManager.connectionStatus
+        previewState?.connectionStatus ?? daemonManager.connectionStatus
     }
 
     private var isManageChargingOn: Bool {
@@ -118,13 +118,13 @@ struct ChargingSettingsView: View {
     }
 
     private var shouldShowApprovalPrompt: Bool {
-        guard helperStatus == .requiresApproval else { return false }
+        guard daemonStatus == .requiresApproval else { return false }
         return previewState != nil
             || chargingController.flowState.showsApprovalPrompt
     }
 
     private var isChargingDaemonReady: Bool {
-        helperStatus == .installed
+        daemonStatus == .installed
             && connectionStatus == .connected
             && settingsModel.managementState.settings != nil
             && capabilitiesResolved
@@ -155,7 +155,7 @@ struct ChargingSettingsView: View {
                 shouldShowApprovalPrompt: shouldShowApprovalPrompt,
                 displayedStatusMessage: displayedStatusMessage,
                 uninstallErrorMessage: uninstallErrorMessage,
-                helperStatus: helperStatus,
+                daemonStatus: daemonStatus,
                 connectionStatus: connectionStatus,
                 setManageCharging: setManageCharging,
                 openApprovalSettings: runPreviewSafe(openApprovalSettings),
@@ -201,7 +201,7 @@ struct ChargingSettingsView: View {
         .settingsFormLayout()
         .disabled(previewState == nil && isUninstalling)
         .animation(.default, value: isManageChargingOn)
-        .animation(.default, value: helperStatus)
+        .animation(.default, value: daemonStatus)
         .animation(.default, value: connectionStatus)
         .alert(
             "Remove Background Service?",
@@ -228,11 +228,11 @@ struct ChargingSettingsView: View {
             guard previewState == nil else { return }
             chargingController.cancelPendingWork()
         }
-        .onChange(of: helperManager.helperStatus) { _, newStatus in
+        .onChange(of: daemonManager.daemonStatus) { _, newStatus in
             guard previewState == nil else { return }
-            chargingController.handleHelperStatusChange(newStatus)
+            chargingController.handleDaemonStatusChange(newStatus)
         }
-        .onChange(of: helperManager.connectionStatus) { _, newStatus in
+        .onChange(of: daemonManager.connectionStatus) { _, newStatus in
             guard previewState == nil else { return }
             chargingController.handleConnectionStatusChange(
                 newStatus,
@@ -282,7 +282,7 @@ struct ChargingSettingsView: View {
     }
 
     private func reconnectChargingDaemon() {
-        helperManager.disconnect()
+        daemonManager.disconnect()
         requestEnableChargingManagement()
     }
 

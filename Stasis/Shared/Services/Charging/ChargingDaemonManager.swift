@@ -15,8 +15,8 @@ private final class ChargingSettingsCommandResult<Value> {
 class ChargingDaemonManager {
   static let shared = ChargingDaemonManager()
 
-  private static let machServiceName = "com.srimanachanta.stasis-daemon"
-  private static let plistName = "com.srimanachanta.stasis-daemon.plist"
+  private static let machServiceName = Constants.Identity.daemon
+  private static let plistName = Constants.Identity.daemonPlistName
   private static let commandTimeout: Duration = .seconds(8)
 
   private let service: SMAppService
@@ -26,7 +26,7 @@ class ChargingDaemonManager {
 
   private let logger = Logger.stasis("ChargingDaemonManager")
 
-  private(set) var helperStatus: ChargingHelperStatus
+  private(set) var daemonStatus: ChargingDaemonStatus
   private(set) var connectionStatus: ChargingDaemonConnectionStatus = .disconnected
   private(set) var chargingManagementSettings: ChargingManagementSettings?
   private(set) var chargingThresholdSettings: ChargingThresholdSettings?
@@ -43,7 +43,7 @@ class ChargingDaemonManager {
   @ObservationIgnored private lazy var bundledDaemonExecutableHash: String? =
     DaemonBuildIdentity.executableHash(
       at: Bundle.main.bundleURL
-        .appendingPathComponent("Contents/Library/LaunchDaemons/StasisDaemon")
+        .appendingPathComponent(Constants.Identity.daemonExecutableBundlePath)
     )
 
   /// True when the connected daemon was spawned from a different binary than
@@ -68,9 +68,9 @@ class ChargingDaemonManager {
   private init() {
     service = SMAppService.daemon(plistName: Self.plistName)
     switch service.status {
-    case .enabled: helperStatus = .installed
-    case .requiresApproval: helperStatus = .requiresApproval
-    default: helperStatus = .notInstalled
+    case .enabled: daemonStatus = .installed
+    case .requiresApproval: daemonStatus = .requiresApproval
+    default: daemonStatus = .notInstalled
     }
   }
 
@@ -98,8 +98,8 @@ class ChargingDaemonManager {
       if chargingManagementSettings?.isEnabled == true {
         _ = try await setChargingManagementSettings(.init(isEnabled: false))
       }
-      try await executeCommand("Prepare charging daemon for uninstall") { helper, reply in
-        helper.prepareForUninstall(authData: nil, reply: reply)
+      try await executeCommand("Prepare charging daemon for uninstall") { daemon, reply in
+        daemon.prepareForUninstall(authData: nil, reply: reply)
       }
       preparedDaemon = true
     }
@@ -117,13 +117,13 @@ class ChargingDaemonManager {
       }
       throw error
     }
-    helperStatus = .notInstalled
+    daemonStatus = .notInstalled
   }
 
   private func cancelUninstallPreparationAfterFailure() async {
     do {
-      try await executeCommand("Cancel charging daemon uninstall preparation") { helper, reply in
-        helper.cancelUninstallPreparation { success in
+      try await executeCommand("Cancel charging daemon uninstall preparation") { daemon, reply in
+        daemon.cancelUninstallPreparation { success in
           reply(success, success ? nil : "Daemon rejected uninstall cancellation")
         }
       }
@@ -138,8 +138,8 @@ class ChargingDaemonManager {
     logger.info("Repairing charging daemon registration")
     disconnect()
 
-    // A running helper can be from an older app build. Re-registering the
-    // daemon asks launchd to use the helper bundled with the current app.
+    // A running daemon can be from an older app build. Re-registering the
+    // daemon asks launchd to use the daemon bundled with the current app.
     if service.status == .enabled {
       try await service.unregister()
       try await Task.sleep(for: .milliseconds(500))
@@ -150,9 +150,9 @@ class ChargingDaemonManager {
 
   func refreshStatus() {
     switch service.status {
-    case .enabled: helperStatus = .installed
-    case .requiresApproval: helperStatus = .requiresApproval
-    default: helperStatus = .notInstalled
+    case .enabled: daemonStatus = .installed
+    case .requiresApproval: daemonStatus = .requiresApproval
+    default: daemonStatus = .notInstalled
     }
   }
 
@@ -212,8 +212,8 @@ class ChargingDaemonManager {
     _ settings: ChargingManagementSettings
   ) async throws -> ChargingManagementSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
-    try await executeCommand("Set charging management settings") { [weak self] helper, reply in
-      helper.setChargingManagementSettings(payload: payload) { response, error in
+    try await executeCommand("Set charging management settings") { [weak self] daemon, reply in
+      daemon.setChargingManagementSettings(payload: payload) { response, error in
         Task { @MainActor in
           Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.chargingManagementSettings = $0 }
         }
@@ -228,8 +228,8 @@ class ChargingDaemonManager {
   ) async throws -> ChargingThresholdSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
     let result = ChargingSettingsCommandResult<ChargingThresholdSettings>()
-    try await executeCommand("Set charging threshold settings") { [weak self] helper, reply in
-      helper.setChargingThresholdSettings(payload: payload) { response, error in
+    try await executeCommand("Set charging threshold settings") { [weak self] daemon, reply in
+      daemon.setChargingThresholdSettings(payload: payload) { response, error in
         Task { @MainActor in
           Self.decodeSettingsResponse(response, error: error, reply: reply) { confirmed in
             self?.chargingThresholdSettings = confirmed
@@ -248,8 +248,8 @@ class ChargingDaemonManager {
     _ settings: AutomaticDischargeSettings
   ) async throws -> AutomaticDischargeSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
-    try await executeCommand("Set automatic discharge settings") { [weak self] helper, reply in
-      helper.setAutomaticDischargeSettings(payload: payload) { response, error in
+    try await executeCommand("Set automatic discharge settings") { [weak self] daemon, reply in
+      daemon.setAutomaticDischargeSettings(payload: payload) { response, error in
         Task { @MainActor in
           Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.automaticDischargeSettings = $0 }
         }
@@ -263,8 +263,8 @@ class ChargingDaemonManager {
     _ settings: SleepPreventionSettings
   ) async throws -> SleepPreventionSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
-    try await executeCommand("Set sleep prevention settings") { [weak self] helper, reply in
-      helper.setSleepPreventionSettings(payload: payload) { response, error in
+    try await executeCommand("Set sleep prevention settings") { [weak self] daemon, reply in
+      daemon.setSleepPreventionSettings(payload: payload) { response, error in
         Task { @MainActor in
           Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.sleepPreventionSettings = $0 }
         }
@@ -279,8 +279,8 @@ class ChargingDaemonManager {
   ) async throws -> HeatProtectionSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
     let result = ChargingSettingsCommandResult<HeatProtectionSettings>()
-    try await executeCommand("Set heat protection settings") { [weak self] helper, reply in
-      helper.setHeatProtectionSettings(payload: payload) { response, error in
+    try await executeCommand("Set heat protection settings") { [weak self] daemon, reply in
+      daemon.setHeatProtectionSettings(payload: payload) { response, error in
         Task { @MainActor in
           Self.decodeSettingsResponse(response, error: error, reply: reply) { confirmed in
             self?.heatProtectionSettings = confirmed
@@ -299,8 +299,8 @@ class ChargingDaemonManager {
     _ settings: MagSafeLEDSettings
   ) async throws -> MagSafeLEDSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
-    try await executeCommand("Set MagSafe LED settings") { [weak self] helper, reply in
-      helper.setMagSafeLEDSettings(payload: payload) { response, error in
+    try await executeCommand("Set MagSafe LED settings") { [weak self] daemon, reply in
+      daemon.setMagSafeLEDSettings(payload: payload) { response, error in
         Task { @MainActor in
           Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.magSafeLEDSettings = $0 }
         }
@@ -314,8 +314,8 @@ class ChargingDaemonManager {
     _ settings: BatteryPercentageSettings
   ) async throws -> BatteryPercentageSettings {
     let payload = try DaemonPayloadCodec.encode(settings)
-    try await executeCommand("Set battery percentage settings") { [weak self] helper, reply in
-      helper.setBatteryPercentageSettings(payload: payload) { response, error in
+    try await executeCommand("Set battery percentage settings") { [weak self] daemon, reply in
+      daemon.setBatteryPercentageSettings(payload: payload) { response, error in
         Task { @MainActor in
           Self.decodeSettingsResponse(response, error: error, reply: reply) { self?.batteryPercentageSettings = $0 }
         }
@@ -326,9 +326,9 @@ class ChargingDaemonManager {
   }
 
   func setChargeLimitOverride(_ enabled: Bool) async throws {
-    try await executeCommand("Set charge-limit override") { [weak self] helper, reply in
+    try await executeCommand("Set charge-limit override") { [weak self] daemon, reply in
       let generation = self?.snapshotAuthority.generation
-      helper.setChargeLimitOverride(enabled: enabled) { response, errorMessage in
+      daemon.setChargeLimitOverride(enabled: enabled) { response, errorMessage in
         Task { @MainActor in
           self?.handleSnapshotCommandPayload(
             response,
@@ -342,9 +342,9 @@ class ChargingDaemonManager {
   }
 
   func setForceDischarge(_ enabled: Bool) async throws {
-    try await executeCommand("Set force discharge") { [weak self] helper, reply in
+    try await executeCommand("Set force discharge") { [weak self] daemon, reply in
       let generation = self?.snapshotAuthority.generation
-      helper.setForceDischarge(authData: nil, enabled: enabled) { response, errorMessage in
+      daemon.setForceDischarge(authData: nil, enabled: enabled) { response, errorMessage in
         Task { @MainActor in
           self?.handleSnapshotCommandPayload(
             response,
@@ -357,7 +357,7 @@ class ChargingDaemonManager {
     }
   }
 
-  func getHelper(errorHandler: @escaping @Sendable (Error) -> Void) -> ChargingDaemonProtocol? {
+  func getDaemon(errorHandler: @escaping @Sendable (Error) -> Void) -> ChargingDaemonProtocol? {
     if connection == nil {
       connect()
     }
@@ -394,8 +394,8 @@ class ChargingDaemonManager {
   func verifyConnection() async throws {
     // Keep verification side-effect free. Capability-specific SMC commands
     // can fail even when the daemon is reachable.
-    try await executeCommand("Verify charging daemon") { helper, reply in
-      helper.checkHealth { payload, errorMessage in
+    try await executeCommand("Verify charging daemon") { daemon, reply in
+      daemon.checkHealth { payload, errorMessage in
         Task { @MainActor [weak self] in
           guard let payload else {
             reply(false, errorMessage ?? "Charging daemon did not respond")
@@ -515,7 +515,7 @@ class ChargingDaemonManager {
   ) {
     let attempt = context.beginAttempt()
     guard
-      let helper = getHelper(errorHandler: { [weak self] error in
+      let daemon = getDaemon(errorHandler: { [weak self] error in
         Task { @MainActor in
           guard let self, context.shouldHandle(attempt) else { return }
           self.logger.error(
@@ -545,13 +545,13 @@ class ChargingDaemonManager {
     else {
       if context.complete(attempt) {
         context.cancelTimeout()
-        connectionStatus = failureStatus(message: "Helper unavailable")
-        continuation.resume(throwing: XPCError.helperUnavailable)
+        connectionStatus = failureStatus(message: "Daemon unavailable")
+        continuation.resume(throwing: XPCError.serviceUnavailable)
       }
       return
     }
 
-    operation(helper) { [weak self] success, errorMessage in
+    operation(daemon) { [weak self] success, errorMessage in
       Task { @MainActor in
         guard context.complete(attempt) else { return }
         context.cancelTimeout()
@@ -611,7 +611,7 @@ class ChargingDaemonManager {
 
   private func requestInitialDaemonState(generation: UInt64) {
     guard
-      let helper = getHelper(errorHandler: { [weak self] error in
+      let daemon = getDaemon(errorHandler: { [weak self] error in
         Task { @MainActor in
           guard let self, self.isActiveConnection(generation) else { return }
           self.recordRuntimeError(error, while: "Initial daemon settings sync")
@@ -619,25 +619,25 @@ class ChargingDaemonManager {
       })
     else { return }
 
-    requestSettingsGroup(generation: generation, getter: helper.getChargingManagementSettings) {
+    requestSettingsGroup(generation: generation, getter: daemon.getChargingManagementSettings) {
       self.chargingManagementSettings = $0
     }
-    requestSettingsGroup(generation: generation, getter: helper.getChargingThresholdSettings) {
+    requestSettingsGroup(generation: generation, getter: daemon.getChargingThresholdSettings) {
       self.chargingThresholdSettings = $0
     }
-    requestSettingsGroup(generation: generation, getter: helper.getAutomaticDischargeSettings) {
+    requestSettingsGroup(generation: generation, getter: daemon.getAutomaticDischargeSettings) {
       self.automaticDischargeSettings = $0
     }
-    requestSettingsGroup(generation: generation, getter: helper.getSleepPreventionSettings) {
+    requestSettingsGroup(generation: generation, getter: daemon.getSleepPreventionSettings) {
       self.sleepPreventionSettings = $0
     }
-    requestSettingsGroup(generation: generation, getter: helper.getHeatProtectionSettings) {
+    requestSettingsGroup(generation: generation, getter: daemon.getHeatProtectionSettings) {
       self.heatProtectionSettings = $0
     }
-    requestSettingsGroup(generation: generation, getter: helper.getMagSafeLEDSettings) {
+    requestSettingsGroup(generation: generation, getter: daemon.getMagSafeLEDSettings) {
       self.magSafeLEDSettings = $0
     }
-    requestSettingsGroup(generation: generation, getter: helper.getBatteryPercentageSettings) {
+    requestSettingsGroup(generation: generation, getter: daemon.getBatteryPercentageSettings) {
       self.batteryPercentageSettings = $0
     }
     requestDaemonSnapshot(generation: generation)
@@ -666,7 +666,7 @@ class ChargingDaemonManager {
 
   private func requestDaemonSnapshot(generation: UInt64) {
     guard
-      let helper = getHelper(errorHandler: { [weak self] error in
+      let daemon = getDaemon(errorHandler: { [weak self] error in
         Task { @MainActor in
           guard let self, self.isActiveConnection(generation) else { return }
           self.recordRuntimeError(error, while: "Initial daemon snapshot sync")
@@ -674,7 +674,7 @@ class ChargingDaemonManager {
       })
     else { return }
 
-    helper.getSnapshot { [weak self] payload, errorMessage in
+    daemon.getSnapshot { [weak self] payload, errorMessage in
       Task { @MainActor in
         guard let self, self.isActiveConnection(generation) else { return }
         guard let payload else {

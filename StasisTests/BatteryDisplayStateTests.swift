@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import stasis
+@testable import Stasis
 
 final class BatteryDisplayStateTests: XCTestCase {
     @MainActor

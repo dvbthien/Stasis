@@ -2,9 +2,9 @@ import Foundation
 import os.log
 import smc_power
 
-final class Helper: NSObject, SMCReaderHelperProtocol {
+final class Helper: NSObject, StasisHelperProtocol {
     private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis.smc-reader-helper",
+        subsystem: Constants.Identity.smcReaderService,
         category: "SMCReader"
     )
 

@@ -1,12 +1,12 @@
 import XCTest
 
-@testable import stasis
+@testable import Stasis
 
 @MainActor
 final class ChargingServiceStatusPresentationTests: XCTestCase {
     func testDeterminingStatusTakesPrecedence() {
         let presentation = makePresentation(
-            helperStatus: .notInstalled,
+            daemonStatus: .notInstalled,
             connectionStatus: .disconnected,
             isDeterminingStatus: true,
             hasOperationError: true
@@ -17,18 +17,18 @@ final class ChargingServiceStatusPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.canRemoveService)
     }
 
-    func testHelperAvailabilityTakesPrecedenceOverConnection() {
+    func testDaemonAvailabilityTakesPrecedenceOverConnection() {
         let cases: [(
-            ChargingHelperStatus,
+            ChargingDaemonStatus,
             ChargingServiceSemanticStatus
         )] = [
             (.notInstalled, .notInstalled),
             (.requiresApproval, .needsApproval),
         ]
 
-        for (helperStatus, expectedStatus) in cases {
+        for (daemonStatus, expectedStatus) in cases {
             let presentation = makePresentation(
-                helperStatus: helperStatus,
+                daemonStatus: daemonStatus,
                 connectionStatus: .connected
             )
 
@@ -48,7 +48,7 @@ final class ChargingServiceStatusPresentationTests: XCTestCase {
 
     func testNotInstalledOperationErrorCanTryAgain() {
         let presentation = makePresentation(
-            helperStatus: .notInstalled,
+            daemonStatus: .notInstalled,
             connectionStatus: .disconnected,
             hasOperationError: true
         )
@@ -107,13 +107,13 @@ final class ChargingServiceStatusPresentationTests: XCTestCase {
     }
 
     private func makePresentation(
-        helperStatus: ChargingHelperStatus = .installed,
+        daemonStatus: ChargingDaemonStatus = .installed,
         connectionStatus: ChargingDaemonConnectionStatus,
         isDeterminingStatus: Bool = false,
         hasOperationError: Bool = false
     ) -> ChargingServiceStatusPresentation {
         ChargingServiceStatusPresentation(
-            helperStatus: helperStatus,
+            daemonStatus: daemonStatus,
             connectionStatus: connectionStatus,
             isDeterminingStatus: isDeterminingStatus,
             hasOperationError: hasOperationError

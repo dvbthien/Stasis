@@ -24,7 +24,7 @@ final class DaemonIOKitMonitor {
 
     private var onUpdate: (@Sendable (DaemonPowerSourceUpdate) -> Void)?
     private let logger = Logger(
-        subsystem: "com.srimanachanta.stasis-daemon",
+        subsystem: Constants.Identity.daemon,
         category: "IOKitMonitor"
     )
 
