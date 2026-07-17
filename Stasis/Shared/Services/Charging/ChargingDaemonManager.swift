@@ -85,6 +85,11 @@ class ChargingDaemonManager {
       preparedDaemon = true
     }
 
+    // Drop our XPC connection first so it doesn't keep the daemon alive
+    // while launchd tears the job down. If unregister fails, the rollback
+    // command below reconnects on demand.
+    disconnect()
+
     do {
       try await service.unregister()
     } catch {
@@ -93,7 +98,6 @@ class ChargingDaemonManager {
       }
       throw error
     }
-    disconnect()
     helperStatus = .notInstalled
   }
 

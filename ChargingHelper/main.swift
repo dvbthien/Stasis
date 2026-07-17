@@ -79,7 +79,10 @@ terminationSource.setEventHandler {
         server.stop()
         ioKitMonitor.stop()
         await runtime.shutdown()
-        CFRunLoopStop(CFRunLoopGetMain())
+        // CFRunLoopStop cannot break out of RunLoop.main.run(), which
+        // re-enters the loop; exit directly so launchd doesn't have to
+        // escalate to SIGKILL after the grace period.
+        exit(0)
     }
 }
 terminationSource.resume()
