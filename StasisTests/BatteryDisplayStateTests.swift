@@ -4,18 +4,9 @@ import XCTest
 
 final class BatteryDisplayStateTests: XCTestCase {
     @MainActor
-    func testDisconnectedAdapterUsesBatteryDespiteStaleSMCValues() {
+    func testDisconnectedPowerSourceUsesBatteryDischarging() {
         let state = BatteryDisplayState.derive(
-            metrics: BatteryMetrics(
-                isCharging: true,
-                batteryPower: 8,
-                externalConnected: true
-            ),
-            adapter: AdapterMetrics(
-                adapterConnected: false,
-                powerEnabled: true,
-                adapterPower: 45
-            )
+            metrics: BatteryMetrics(isCharging: false, externalConnected: false)
         )
 
         XCTAssertEqual(state.powerSource, .battery)
@@ -23,10 +14,9 @@ final class BatteryDisplayStateTests: XCTestCase {
     }
 
     @MainActor
-    func testConnectedAdapterWithoutSMCPowerUsesBattery() {
+    func testDisconnectedPowerSourceIgnoresStaleChargingFlag() {
         let state = BatteryDisplayState.derive(
-            metrics: BatteryMetrics(isCharging: false, externalConnected: true),
-            adapter: AdapterMetrics(adapterConnected: true, powerEnabled: true)
+            metrics: BatteryMetrics(isCharging: true, externalConnected: false)
         )
 
         XCTAssertEqual(state.powerSource, .battery)
@@ -34,18 +24,9 @@ final class BatteryDisplayStateTests: XCTestCase {
     }
 
     @MainActor
-    func testConnectedAdapterChargingWithNonnegativeBatteryPowerUsesACAdapter() {
+    func testExternalConnectedChargingUsesACAdapterCharging() {
         let state = BatteryDisplayState.derive(
-            metrics: BatteryMetrics(
-                isCharging: true,
-                batteryPower: 8,
-                externalConnected: true
-            ),
-            adapter: AdapterMetrics(
-                adapterConnected: true,
-                powerEnabled: true,
-                adapterPower: 45
-            )
+            metrics: BatteryMetrics(isCharging: true, externalConnected: true)
         )
 
         XCTAssertEqual(state.powerSource, .acAdapter)
@@ -53,56 +34,9 @@ final class BatteryDisplayStateTests: XCTestCase {
     }
 
     @MainActor
-    func testConnectedAdapterNotChargingWithNonnegativeBatteryPowerUsesPluggedIn() {
+    func testExternalConnectedNotChargingUsesPluggedIn() {
         let state = BatteryDisplayState.derive(
-            metrics: BatteryMetrics(
-                isCharging: false,
-                batteryPower: 0,
-                externalConnected: true
-            ),
-            adapter: AdapterMetrics(
-                adapterConnected: true,
-                powerEnabled: true,
-                adapterPower: 45
-            )
-        )
-
-        XCTAssertEqual(state.powerSource, .acAdapter)
-        XCTAssertEqual(state.chargingMode, .pluggedIn)
-    }
-
-    @MainActor
-    func testConnectedAdapterWhileBatterySuppliesPowerUsesBoth() {
-        let state = BatteryDisplayState.derive(
-            metrics: BatteryMetrics(
-                isCharging: false,
-                batteryPower: -8,
-                externalConnected: true
-            ),
-            adapter: AdapterMetrics(
-                adapterConnected: true,
-                powerEnabled: true,
-                adapterPower: 45
-            )
-        )
-
-        XCTAssertEqual(state.powerSource, .both)
-        XCTAssertEqual(state.chargingMode, .discharging)
-    }
-
-    @MainActor
-    func testAuxiliaryFlagsDoNotOverrideMeasuredPowerSource() {
-        let state = BatteryDisplayState.derive(
-            metrics: BatteryMetrics(
-                isCharging: false,
-                batteryPower: 0,
-                externalConnected: false
-            ),
-            adapter: AdapterMetrics(
-                adapterConnected: true,
-                powerEnabled: false,
-                adapterPower: 45
-            )
+            metrics: BatteryMetrics(isCharging: false, externalConnected: true)
         )
 
         XCTAssertEqual(state.powerSource, .acAdapter)

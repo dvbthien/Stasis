@@ -2,9 +2,11 @@ import Foundation
 import Observation
 import os.log
 
-/// Uses daemon snapshots as the authoritative source for the status icon and
-/// menu. The app-side IOKit monitor remains available as an immediate fallback
-/// while the daemon is unavailable or reconnecting.
+/// Uses daemon snapshots as the authoritative source for policy-affected state
+/// (percentages, charging, adapter). Hardware readings the daemon does not own
+/// (capacities, health, temperature, cycle count) always come from the
+/// app-side IOKit monitor, which also acts as a full fallback while the daemon
+/// is unavailable or reconnecting.
 @MainActor
 @Observable
 class BatteryService {
@@ -25,8 +27,9 @@ class BatteryService {
   private var ioKitMonitorTask: Task<Void, Never>?
   private var smcTelemetryTask: Task<Void, Never>?
 
-  private var fallbackMetrics = BatteryMetrics()
-  private var fallbackAdapterMetrics = AdapterMetrics()
+  private var ioKitMetrics = BatteryMetrics()
+  private var ioKitAdapterMetrics = AdapterMetrics()
+  private var smcTelemetry: SMCTelemetryMetrics?
   private var telemetryRequested = false
   private var isStopped = false
 
@@ -36,17 +39,8 @@ class BatteryService {
     logger.info("BatteryService initialized")
     startIOKitMonitoring()
     daemonManager.startStateStreaming()
-    updateActiveMetricsSource()
+    refreshMetrics()
     observeDaemonSnapshotAuthority()
-  }
-
-  func loadCapabilities() async {
-    if let snapshot = authoritativeDaemonSnapshot {
-      updateDeviceCapabilities(from: snapshot.capabilities)
-      return
-    }
-
-    deviceCapabilities = .unknown
   }
 
   private var authoritativeDaemonSnapshot: DaemonSnapshot? {
@@ -63,39 +57,28 @@ class BatteryService {
     } onChange: { [weak self] in
       Task { @MainActor in
         guard let self, !self.isStopped else { return }
-        self.updateActiveMetricsSource()
+        self.refreshMetrics()
         self.observeDaemonSnapshotAuthority()
       }
     }
   }
 
-  private func updateActiveMetricsSource() {
-    if let snapshot = authoritativeDaemonSnapshot {
-      updateMetrics(from: snapshot)
-      stopIOKitMonitoring()
-    } else {
-      startIOKitMonitoring()
-      updateMetricsFromIOKitFallback()
-    }
-    updateTelemetryPollingState()
-  }
-
   private func startIOKitMonitoring() {
     guard !isStopped, ioKitMonitorTask == nil else { return }
-    logger.info("Starting IOKit monitoring in main app")
+    logger.info("Starting app-side IOKit monitoring")
     ioKitMonitorTask = Task { [weak self] in
       guard let self else { return }
       guard !Task.isCancelled else { return }
       for await (newBatteryMetrics, newAdapterMetrics) in self.ioKitService.metricsStream() {
         guard !Task.isCancelled else { break }
-        self.receiveIOKitFallbackMetrics(newBatteryMetrics, adapter: newAdapterMetrics)
+        self.receiveIOKitMetrics(newBatteryMetrics, adapter: newAdapterMetrics)
       }
     }
   }
 
   private func stopIOKitMonitoring() {
     guard ioKitMonitorTask != nil else { return }
-    logger.info("Stopping app-side IOKit fallback")
+    logger.info("Stopping app-side IOKit monitoring")
     ioKitMonitorTask?.cancel()
     ioKitMonitorTask = nil
     ioKitService.stopMonitoring()
@@ -106,56 +89,50 @@ class BatteryService {
     updateTelemetryPollingState()
   }
 
-  private func receiveIOKitFallbackMetrics(
+  private func receiveIOKitMetrics(
     _ newBatteryMetrics: BatteryMetrics,
     adapter newAdapterMetrics: AdapterMetrics
   ) {
-    logger.debug("Received fallback IOKit update")
-    fallbackMetrics = newBatteryMetrics
-    fallbackAdapterMetrics = newAdapterMetrics
+    logger.debug("Received IOKit update")
+    ioKitMetrics = newBatteryMetrics
+    ioKitAdapterMetrics = newAdapterMetrics
+    refreshMetrics()
+  }
 
-    if authoritativeDaemonSnapshot == nil {
-      updateMetricsFromIOKitFallback()
+  /// Rebuilds the published metrics from the three sources: IOKit readings
+  /// are the base, SMC telemetry supplies the electrical values, and a fresh
+  /// daemon snapshot overrides only the fields the daemon actually owns.
+  private func refreshMetrics() {
+    var updatedBattery = ioKitMetrics
+    var updatedAdapter = ioKitAdapterMetrics
+
+    if let telemetry = smcTelemetry {
+      updatedBattery.batteryVoltage = telemetry.batteryVoltage
+      updatedBattery.batteryCurrent = telemetry.batteryCurrent
+      updatedBattery.batteryPower = telemetry.batteryPower
+
+      updatedAdapter.adapterVoltage = telemetry.adapterVoltage
+      updatedAdapter.adapterCurrent = telemetry.adapterCurrent
+      updatedAdapter.adapterPower = telemetry.adapterPower
     }
-  }
 
-  private func updateMetrics(from snapshot: DaemonSnapshot) {
-    let updatedBattery = BatteryMetrics(
-      batteryPercentage: snapshot.battery.displayedPercentage,
-      hardwareBatteryPercentage: snapshot.battery.hardwarePercentage,
-      isCharging: snapshot.battery.isCharging,
-      timeRemaining: snapshot.battery.timeRemaining,
-      batteryVoltage: metrics.batteryVoltage,
-      batteryCurrent: metrics.batteryCurrent,
-      batteryPower: metrics.batteryPower,
-      batteryTemperature: snapshot.battery.temperature,
-      batteryHealth: snapshot.battery.health,
-      maxCapacity: metrics.maxCapacity,
-      designCapacity: metrics.designCapacity,
-      cycleCount: snapshot.battery.cycleCount,
-      externalConnected: snapshot.adapter.physicallyConnected
-    )
-    let updatedAdapter = AdapterMetrics(
-      adapterConnected: snapshot.adapter.physicallyConnected,
-      powerEnabled: snapshot.adapter.powerEnabled,
-      adapterVoltage: adapterMetrics.adapterVoltage,
-      adapterCurrent: adapterMetrics.adapterCurrent,
-      adapterPower: adapterMetrics.adapterPower
-    )
-    commitMetrics(updatedBattery, adapter: updatedAdapter)
-    updateDeviceCapabilities(from: snapshot.capabilities)
-  }
+    if let snapshot = authoritativeDaemonSnapshot {
+      updatedBattery.batteryPercentage = snapshot.battery.displayedPercentage
+      updatedBattery.hardwareBatteryPercentage = snapshot.battery.hardwarePercentage
+      updatedBattery.isCharging = snapshot.battery.isCharging
+      updatedBattery.timeRemaining = snapshot.battery.timeRemaining
+      // "Running on AC power" (false during force discharge), as opposed to
+      // physicallyConnected ("cable attached"). Nil from daemons that predate
+      // the field — keep the app-side IOKit value then.
+      if let externalConnected = snapshot.battery.externalConnected {
+        updatedBattery.externalConnected = externalConnected
+      }
 
-  private func updateMetricsFromIOKitFallback() {
-    var updatedBattery = fallbackMetrics
-    updatedBattery.batteryVoltage = metrics.batteryVoltage
-    updatedBattery.batteryCurrent = metrics.batteryCurrent
-    updatedBattery.batteryPower = metrics.batteryPower
+      updatedAdapter.adapterConnected = snapshot.adapter.physicallyConnected
+      updatedAdapter.powerEnabled = snapshot.adapter.powerEnabled
 
-    var updatedAdapter = fallbackAdapterMetrics
-    updatedAdapter.adapterVoltage = adapterMetrics.adapterVoltage
-    updatedAdapter.adapterCurrent = adapterMetrics.adapterCurrent
-    updatedAdapter.adapterPower = adapterMetrics.adapterPower
+      updateDeviceCapabilities(from: snapshot.capabilities)
+    }
 
     commitMetrics(updatedBattery, adapter: updatedAdapter)
   }
@@ -214,25 +191,11 @@ class BatteryService {
 
   private func refreshSMCTelemetry() async {
     do {
-      mergeSMCTelemetry(try await smcReader.readAllMetrics())
+      smcTelemetry = try await smcReader.readAllMetrics()
+      refreshMetrics()
     } catch {
       logger.error("Could not read SMC telemetry: \(error.localizedDescription)")
     }
-  }
-
-  private func mergeSMCTelemetry(_ telemetry: SMCTelemetryMetrics) {
-    var updatedBattery = metrics
-    var updatedAdapter = adapterMetrics
-
-    updatedBattery.batteryVoltage = telemetry.batteryVoltage
-    updatedBattery.batteryCurrent = telemetry.batteryCurrent
-    updatedBattery.batteryPower = telemetry.batteryPower
-
-    updatedAdapter.adapterVoltage = telemetry.adapterVoltage
-    updatedAdapter.adapterCurrent = telemetry.adapterCurrent
-    updatedAdapter.adapterPower = telemetry.adapterPower
-
-    commitMetrics(updatedBattery, adapter: updatedAdapter)
   }
 
   private func updateBatteryObservationState(

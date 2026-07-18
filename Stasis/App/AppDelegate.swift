@@ -28,16 +28,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         IOObjectRelease(batteryIOService)
 
-        Task {
-            await setupServices()
-            setupMenu()
-            requestNotificationPermissions()
-        }
+        setupServices()
+        setupMenu()
+        requestNotificationPermissions()
     }
 
-    private func setupServices() async {
+    private func setupServices() {
         batteryService = BatteryService()
-        await batteryService.loadCapabilities()
         lowPowerModeMonitor = LowPowerModeMonitor()
         uptimeClock = UptimeClock()
         // The Settings scene observes deviceCapabilities on the service

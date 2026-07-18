@@ -157,7 +157,6 @@ final class DaemonIOKitMonitor {
 
         let powerInfo = powerSourceInfo() as? [String: Any]
         let percentages = batteryPercentages(powerInfo: powerInfo)
-        let capacities = batteryCapacities()
         let isCharging = powerInfo?[kIOPSIsChargingKey] as? Bool ?? false
         let externalConnected: Bool = propertyValue(
             batteryService,
@@ -170,9 +169,8 @@ final class DaemonIOKitMonitor {
             hardwarePercentage: percentages.hardware,
             isCharging: isCharging,
             timeRemaining: timeRemaining(powerInfo: powerInfo, isCharging: isCharging),
-            temperature: batteryTemperature(powerInfo: powerInfo) ?? 0,
-            health: capacities.design > 0 ? (capacities.max * 100) / capacities.design : 100,
-            cycleCount: propertyValue(batteryService, key: "CycleCount") ?? 0
+            externalConnected: runningOnACPower(powerInfo: powerInfo),
+            temperature: batteryTemperature(powerInfo: powerInfo) ?? 0
         )
         let adapter = DaemonAdapterSnapshot(physicallyConnected: physicallyConnected)
 
@@ -229,6 +227,16 @@ final class DaemonIOKitMonitor {
         return (displayed, hardware)
     }
 
+    /// Whether the machine currently draws from AC power — the same signal
+    /// the system battery icon uses. Distinct from "cable attached": false
+    /// during force discharge.
+    private func runningOnACPower(powerInfo: [String: Any]?) -> Bool {
+        if let state = powerInfo?[kIOPSPowerSourceStateKey] as? String {
+            return state == kIOPSACPowerValue
+        }
+        return propertyValue(batteryService, key: "ExternalConnected") ?? false
+    }
+
     private func timeRemaining(powerInfo: [String: Any]?, isCharging: Bool) -> Int {
         let key = isCharging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey
         guard
@@ -258,18 +266,6 @@ final class DaemonIOKitMonitor {
     private func celsius(fromDecikelvin value: Int) -> Double? {
         let temperature = (Double(value) / 10) - 273.15
         return (0...80).contains(temperature) ? temperature : nil
-    }
-
-    private func batteryCapacities() -> (max: Int, design: Int) {
-        let maximum: Int = propertyValue(
-            batteryService,
-            key: "AppleRawMaxCapacity"
-        ) ?? 0
-        let design: Int = propertyValue(
-            batteryService,
-            key: "DesignCapacity"
-        ) ?? 0
-        return (maximum, design)
     }
 
     private func adapterIsPhysicallyConnected() -> Bool {

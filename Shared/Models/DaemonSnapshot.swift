@@ -6,21 +6,21 @@ struct DaemonBatterySnapshot: Codable, Equatable, Sendable {
     var isCharging: Bool = false
     var timeRemaining: Int = 0
 
-    var voltage: Double = 0
-    var current: Double = 0
-    var power: Double = 0
-    var temperature: Double = 0
+    /// True while the machine is running on AC power (the power-source state
+    /// the system battery icon reflects); false during force discharge even
+    /// with the cable attached. Optional so snapshots from daemons that
+    /// predate the field decode as nil and the app keeps its own IOKit value.
+    var externalConnected: Bool? = nil
 
-    var health: Int = 0
-    var cycleCount: Int = 0
+    /// Kept daemon-side for the heat-protection policy; other hardware
+    /// readings (health, capacities, cycle count, electrical telemetry)
+    /// are read directly by the app and are not part of the snapshot.
+    var temperature: Double = 0
 }
 
 struct DaemonAdapterSnapshot: Codable, Equatable, Sendable {
     var physicallyConnected: Bool = false
     var powerEnabled: Bool? = nil
-    var voltage: Double = 0
-    var current: Double = 0
-    var power: Double = 0
 }
 
 struct DaemonFirmwareChargeLimitState: Codable, Equatable, Sendable {

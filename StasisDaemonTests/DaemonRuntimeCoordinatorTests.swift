@@ -16,9 +16,8 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
                     hardwarePercentage: 62,
                     isCharging: false,
                     timeRemaining: 90,
-                    temperature: 34,
-                    health: 93,
-                    cycleCount: 180
+                    externalConnected: false,
+                    temperature: 34
                 ),
                 adapter: DaemonAdapterSnapshot(physicallyConnected: true),
                 reason: .interestNotification
@@ -28,10 +27,8 @@ final class DaemonRuntimeCoordinatorTests: XCTestCase {
         let snapshot = await fixture.runtime.currentSnapshot(refreshHardware: false)
         XCTAssertEqual(snapshot.battery.displayedPercentage, 64)
         XCTAssertEqual(snapshot.battery.hardwarePercentage, 62)
-        XCTAssertEqual(snapshot.battery.voltage, 0)
-        XCTAssertEqual(snapshot.battery.power, 0)
         XCTAssertFalse(snapshot.battery.isCharging)
-        XCTAssertEqual(snapshot.adapter.power, 0)
+        XCTAssertEqual(snapshot.battery.externalConnected, false)
         let hardwareStateReads = await fixture.hardware.hardwareStateReadCount()
         XCTAssertEqual(hardwareStateReads, 1)
 
