@@ -22,8 +22,15 @@ actor DaemonSleepAssertionController: DaemonSleepAssertionControlling {
     }
 
     private func acquire() {
+        // `kIOPMAssertionTypePreventSystemSleep` (not the idle-only
+        // `kIOPMAssertPreventUserIdleSystemSleep`) so Sleep Prevention also
+        // blocks Sleep chosen from the Apple menu, not just idle sleep.
+        // Neither assertion type can block lid-close sleep — that's a macOS
+        // thermal-safety rule no user-space assertion overrides, so the
+        // pre-sleep charging cutoff (Gap A) must stay unconditional and not
+        // assume this assertion prevents sleep.
         let result = IOPMAssertionCreateWithName(
-            kIOPMAssertPreventUserIdleSystemSleep as CFString,
+            kIOPMAssertionTypePreventSystemSleep as CFString,
             IOPMAssertionLevel(kIOPMAssertionLevelOn),
             "Stasis daemon: Charging towards charge limit" as CFString,
             &assertionID
