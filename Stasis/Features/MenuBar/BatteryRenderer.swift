@@ -81,7 +81,7 @@ extension BatteryRenderer {
     }
 
     static let insideBodyWidth: CGFloat = 28
-    static let insideBodyHeight: CGFloat = 13
+    static let insideBodyHeight: CGFloat = 14
     static let outsideBodyWidth: CGFloat = 23
     static let outsideBodyHeight: CGFloat = 11
     static let insideCornerRadius: CGFloat = 4
@@ -398,12 +398,19 @@ extension BatteryRenderer {
     )
   }
 
-  private static var stateSymbolCache: [String: NSImage] = [:]
+  /// A configured symbol image with its visible glyph bounds. SF Symbol
+  /// images include transparent margins that would skew optical centering.
+  private struct StateSymbol {
+    let image: NSImage
+    let inkBounds: NSRect
+  }
+
+  private static var stateSymbolCache: [String: StateSymbol] = [:]
 
   private static func stateSymbol(
     for chargingMode: ChargingMode,
     pointSize: CGFloat
-  ) -> NSImage? {
+  ) -> StateSymbol? {
     guard let symbolName = chargingMode.symbolName else { return nil }
 
     let cacheKey = "\(symbolName)-\(pointSize)"
@@ -425,11 +432,53 @@ extension BatteryRenderer {
     let colorConfiguration = NSImage.SymbolConfiguration(
       hierarchicalColor: Layout.foregroundColor
     )
-    let configured = symbol.withSymbolConfiguration(
+    guard let configured = symbol.withSymbolConfiguration(
       sizeConfiguration.applying(colorConfiguration)
+    ) else {
+      return nil
+    }
+    let entry = StateSymbol(
+      image: configured,
+      inkBounds: imageInkBounds(of: configured)
     )
-    stateSymbolCache[cacheKey] = configured
-    return configured
+    stateSymbolCache[cacheKey] = entry
+    return entry
+  }
+
+  /// Scans the image alpha to find the visible glyph bounds, in image
+  /// point coordinates. Runs once per symbol and size; results are cached
+  /// with the symbol.
+  private static func imageInkBounds(of image: NSImage) -> NSRect {
+    let fullRect = NSRect(origin: .zero, size: image.size)
+    var proposedRect = fullRect
+    guard image.size.width > 0,
+      let cgImage = image.cgImage(
+        forProposedRect: &proposedRect,
+        context: nil,
+        hints: nil
+      )
+    else { return fullRect }
+
+    let rep = NSBitmapImageRep(cgImage: cgImage)
+    let scale = CGFloat(rep.pixelsWide) / image.size.width
+    var minX = rep.pixelsWide
+    var maxX = -1
+    for x in 0..<rep.pixelsWide {
+      for y in 0..<rep.pixelsHigh
+      where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.03 {
+        minX = min(minX, x)
+        maxX = max(maxX, x)
+        break
+      }
+    }
+    guard maxX >= minX else { return fullRect }
+
+    return NSRect(
+      x: CGFloat(minX) / scale,
+      y: 0,
+      width: CGFloat(maxX - minX + 1) / scale,
+      height: image.size.height
+    )
   }
 
   /// Horizontal ink extent measured with device metrics.
@@ -453,25 +502,27 @@ extension BatteryRenderer {
       withAttributes: batteryTextAttributes
     )
     let percentageInkBounds = inkBounds(of: percentageText)
-    let symbolImage = stateSymbol(
+    let symbol = stateSymbol(
       for: context.chargingMode,
       pointSize: Layout.insideSymbolSize
     )
-    let symbolSpacing = symbolImage == nil ? 0 : Layout.symbolSpacing
-    let symbolSize = symbolImage?.size ?? .zero
+    let symbolSpacing = symbol == nil ? 0 : Layout.symbolSpacing
+    let symbolInkWidth = symbol?.inkBounds.width ?? 0
     let contentWidth =
-      percentageInkBounds.width + symbolSpacing + symbolSize.width
+      percentageInkBounds.width + symbolSpacing + symbolInkWidth
     let contentMinX = bodyRect.midX - contentWidth / 2
     let percentagePoint = NSPoint(
       x: contentMinX - percentageInkBounds.minX,
       y: bodyRect.midY - percentageSize.height / 2
     )
-    let symbolRect = symbolImage.map { _ in
+    // Position the image so its visible ink starts after the spacing.
+    let symbolRect = symbol.map { symbol in
       NSRect(
-        x: contentMinX + percentageInkBounds.width + symbolSpacing,
-        y: bodyRect.midY - symbolSize.height / 2,
-        width: symbolSize.width,
-        height: symbolSize.height
+        x: contentMinX + percentageInkBounds.width + symbolSpacing
+          - symbol.inkBounds.minX,
+        y: bodyRect.midY - symbol.image.size.height / 2,
+        width: symbol.image.size.width,
+        height: symbol.image.size.height
       )
     }
 
@@ -490,9 +541,11 @@ extension BatteryRenderer {
       glyphZones.append(GlyphZone(range: paddedMinX...paddedMaxX))
       characterOriginX += characterAdvance
     }
-    if let symbolRect {
-      let paddedMinX = symbolRect.minX - Layout.glyphAntialiasPadding
-      let paddedMaxX = symbolRect.maxX + Layout.glyphAntialiasPadding
+    if let symbolRect, let symbol {
+      let inkMinX = symbolRect.minX + symbol.inkBounds.minX
+      let paddedMinX = inkMinX - Layout.glyphAntialiasPadding
+      let paddedMaxX = inkMinX + symbol.inkBounds.width
+        + Layout.glyphAntialiasPadding
       glyphZones.append(
         GlyphZone(range: paddedMinX...paddedMaxX)
       )
@@ -501,7 +554,7 @@ extension BatteryRenderer {
     return InsideForegroundLayout(
       percentageText: percentageText,
       percentagePoint: percentagePoint,
-      symbolImage: symbolImage,
+      symbolImage: symbol?.image,
       symbolRect: symbolRect,
       glyphZones: mergedGlyphZones(glyphZones)
     )
@@ -605,14 +658,16 @@ extension BatteryRenderer {
         for: context.chargingMode,
         pointSize: Layout.outsideSymbolSize
       ) else { return }
+        // Center the visible ink, not the padded image.
       let symbolRect = NSRect(
         x: context.batteryXOffset
-          + (context.bodyWidth - symbol.size.width) / 2,
-        y: rect.midY - symbol.size.height / 2,
-        width: symbol.size.width,
-        height: symbol.size.height
+          + (context.bodyWidth - symbol.inkBounds.width) / 2
+          - symbol.inkBounds.minX,
+        y: rect.midY - symbol.image.size.height / 2,
+        width: symbol.image.size.width,
+        height: symbol.image.size.height
       )
-      drawSymbolWithKnockoutHalo(symbol, in: symbolRect)
+      drawSymbolWithKnockoutHalo(symbol.image, in: symbolRect)
     }
   }
 
