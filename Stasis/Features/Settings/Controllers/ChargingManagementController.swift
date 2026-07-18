@@ -199,12 +199,11 @@ final class ChargingManagementController {
 
   private func repairDaemonIfOutdated() async {
     do {
-      try await daemonManager.verifyConnection()
-      try Task.checkCancellation()
-      guard daemonManager.isDaemonOutdated else { return }
-
-      scheduleSpinner(for: .repairing)
-      _ = try await daemonManager.repairDaemonIfOutdated()
+      // Shares verifyInstalledDaemon's repair-on-failure path so a daemon
+      // left over from a previous build gets fixed as soon as the app
+      // launches, without the user having to touch Login Items or click
+      // Reconnect themselves.
+      try await verifyInstalledDaemon()
       try Task.checkCancellation()
       await finishSpinnerIfNeeded()
       guard !Task.isCancelled else { return }
@@ -362,11 +361,14 @@ final class ChargingManagementController {
     do {
       try await daemonManager.verifyConnection()
     } catch {
-      guard shouldRepairAfterVerifyFailure else {
-        throw error
-      }
-
-      logger.error("Charging daemon startup verify failed, attempting repair: \(error)")
+      // A verify failure while the daemon is registered almost always means
+      // launchd is still running a daemon from a previous build (or one
+      // otherwise wedged); reconnecting alone can't fix that; only
+      // unregistering and re-registering can. Repair unconditionally rather
+      // than gating on the connection failure flavor, since that gate was
+      // missing exactly the failure modes a stale/incompatible daemon
+      // produces and left users stuck manually toggling Login Items.
+      logger.error("Charging daemon verify failed, attempting repair: \(error)")
       try await repairAndReverify()
       return
     }
@@ -383,15 +385,6 @@ final class ChargingManagementController {
     guard daemonManager.daemonStatus == .installed else { return }
     scheduleSpinner(for: .verifying)
     try await daemonManager.verifyConnection()
-  }
-
-  private var shouldRepairAfterVerifyFailure: Bool {
-    switch daemonManager.connectionStatus {
-    case .startupFailed, .invalidated, .disconnected:
-      true
-    case .connecting, .connected, .interrupted, .runtimeFailed:
-      false
-    }
   }
 
   private func handleUnavailableDaemonAfterRepair() {

@@ -85,65 +85,48 @@ struct ChargingSettingsView: View {
         settingsModel.capabilities?.firmwareChargeLimitControl == true
     }
 
-    private var daemonStatus: ChargingDaemonStatus {
-        previewState?.daemonStatus ?? daemonManager.daemonStatus
+    private var displayState: ChargingSettingsDisplayState {
+        if let previewState {
+            return ChargingSettingsDisplayState(
+                previewState: previewState,
+                hasAnyControl: hasAnyControl
+            )
+        }
+        return ChargingSettingsDisplayState(
+            daemonManager: daemonManager,
+            chargingController: chargingController,
+            settingsModel: settingsModel,
+            hasAnyControl: hasAnyControl
+        )
     }
 
-    private var connectionStatus: ChargingDaemonConnectionStatus {
-        previewState?.connectionStatus ?? daemonManager.connectionStatus
-    }
-
-    private var isManageChargingOn: Bool {
-        guard hasAnyControl else { return false }
-        return previewState?.manageCharging ?? settingsModel.managementState
-            .settings?.isEnabled ?? false
-    }
-
-    private var isCheckingChargingDaemon: Bool {
-        previewState.map { $0.isVerifying || $0.isUninstalling }
-            ?? (chargingController.isLoading
-                || settingsModel.managementState.isSaving)
-    }
-
-    private var isDeterminingDaemonStatus: Bool {
-        previewState?.isVerifying
-            ?? chargingController.isDeterminingDaemonStatus
-    }
-
-    private var isUninstalling: Bool {
-        previewState?.isUninstalling
-            ?? (chargingController.flowState == .uninstalling)
-    }
-
-    private var uninstallErrorMessage: String? {
-        previewState?.uninstallErrorMessage
-            ?? chargingController.flowState.uninstallErrorMessage
-    }
-
-    private var displayedStatusMessage: String? {
-        previewState?.errorMessage ?? chargingController.flowState.message
-    }
-
-    /// Derived from the daemon status alone so the prompt appears even when
-    /// approval is revoked outside the enable flow (e.g. after reinstalling
-    /// the app with a changed daemon).
-    private var shouldShowApprovalPrompt: Bool {
-        daemonStatus == .requiresApproval && !isUninstalling
+    private var actions: ChargingSettingsActions {
+        guard previewState == nil else { return .disabled }
+        return ChargingSettingsActions(
+            setManageCharging: toggleManageCharging,
+            openApprovalSettings: chargingController.openApprovalSettings,
+            checkApprovalStatus: checkApprovalStatus,
+            requestEnableChargingManagement: requestEnableChargingManagement,
+            reconnectChargingDaemon: reconnectChargingDaemon,
+            requestUninstall: showUninstallConfirmation
+        )
     }
 
     private var isChargingDaemonReady: Bool {
-        daemonStatus == .installed
-            && connectionStatus == .connected
+        displayState.daemonStatus == .installed
+            && displayState.connectionStatus == .connected
             && settingsModel.managementState.settings != nil
             && capabilitiesResolved
             && !chargingController.isLoading
     }
 
     private var shouldShowChargingControls: Bool {
-        isManageChargingOn && isChargingDaemonReady
+        displayState.isManageChargingOn && isChargingDaemonReady
     }
 
     var body: some View {
+        let state = displayState
+
         Form {
             SettingsPageHeader(
                 title: "Charging",
@@ -154,25 +137,10 @@ struct ChargingSettingsView: View {
             ChargingManagementSection(
                 managementState: settingsModel.managementState,
                 thresholdState: settingsModel.thresholdState,
-                previewManageCharging: previewState?.manageCharging,
                 hasAnyControl: hasAnyControl,
                 shouldShowChargingControls: shouldShowChargingControls,
-                isCheckingChargingDaemon: isCheckingChargingDaemon,
-                isDeterminingDaemonStatus: isDeterminingDaemonStatus,
-                isUninstalling: isUninstalling,
-                shouldShowApprovalPrompt: shouldShowApprovalPrompt,
-                displayedStatusMessage: displayedStatusMessage,
-                uninstallErrorMessage: uninstallErrorMessage,
-                daemonStatus: daemonStatus,
-                connectionStatus: connectionStatus,
-                setManageCharging: setManageCharging,
-                openApprovalSettings: runPreviewSafe(openApprovalSettings),
-                checkApprovalStatus: runPreviewSafe(checkApprovalStatus),
-                requestEnableChargingManagement: runPreviewSafe(
-                    requestEnableChargingManagement
-                ),
-                reconnectChargingDaemon: runPreviewSafe(reconnectChargingDaemon),
-                requestUninstall: runPreviewSafe(showUninstallConfirmation)
+                state: state,
+                actions: actions
             )
 
             if shouldShowChargingControls {
@@ -209,10 +177,8 @@ struct ChargingSettingsView: View {
             }
         }
         .settingsFormLayout()
-        .disabled(previewState == nil && isUninstalling)
-        .animation(.default, value: isManageChargingOn)
-        .animation(.default, value: daemonStatus)
-        .animation(.default, value: connectionStatus)
+        .disabled(previewState == nil && state.isUninstalling)
+        .animation(.default, value: state)
         .alert(
             "Remove Background Service?",
             isPresented: $showsUninstallConfirmation
@@ -252,15 +218,6 @@ struct ChargingSettingsView: View {
         }
     }
 
-    private func setManageCharging(_ enabled: Bool) {
-        guard previewState == nil else { return }
-        toggleManageCharging(enabled)
-    }
-
-    private func runPreviewSafe(_ action: @escaping () -> Void) -> () -> Void {
-        { if previewState == nil { action() } }
-    }
-
     private func toggleManageCharging(_ enabled: Bool) {
         if enabled {
             requestEnableChargingManagement()
@@ -278,10 +235,6 @@ struct ChargingSettingsView: View {
             hasAnyControl: hasAnyControl,
             setManageCharging: { settingsModel.managementState.setEnabled($0) }
         )
-    }
-
-    private func openApprovalSettings() {
-        chargingController.openApprovalSettings()
     }
 
     private func requestEnableChargingManagement() {

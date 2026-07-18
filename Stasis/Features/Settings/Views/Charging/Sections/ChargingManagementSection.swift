@@ -6,33 +6,15 @@ struct ChargingManagementSection: View {
   @State private var draftChargeLimit = 80
   @State private var isEditingChargeLimit = false
 
-  let previewManageCharging: Bool?
   let hasAnyControl: Bool
   let shouldShowChargingControls: Bool
-  let isCheckingChargingDaemon: Bool
-  let isDeterminingDaemonStatus: Bool
-  let isUninstalling: Bool
-  let shouldShowApprovalPrompt: Bool
-  let displayedStatusMessage: String?
-  let uninstallErrorMessage: String?
-  let daemonStatus: ChargingDaemonStatus
-  let connectionStatus: ChargingDaemonConnectionStatus
-  let setManageCharging: (Bool) -> Void
-  let openApprovalSettings: () -> Void
-  let checkApprovalStatus: () -> Void
-  let requestEnableChargingManagement: () -> Void
-  let reconnectChargingDaemon: () -> Void
-  let requestUninstall: () -> Void
+  let state: ChargingSettingsDisplayState
+  let actions: ChargingSettingsActions
 
   private var manageCharging: Binding<Bool> {
     Binding(
-      get: {
-        guard hasAnyControl else { return false }
-        return previewManageCharging ?? managementState.settings?.isEnabled ?? false
-      },
-      set: { enabled in
-        setManageCharging(enabled)
-      }
+      get: { state.isManageChargingOn },
+      set: { actions.setManageCharging($0) }
     )
   }
 
@@ -45,11 +27,11 @@ struct ChargingManagementSection: View {
 
   private var serviceStatusPresentation: ChargingServiceStatusPresentation {
     ChargingServiceStatusPresentation(
-      daemonStatus: daemonStatus,
-      connectionStatus: connectionStatus,
-      isDeterminingStatus: isDeterminingDaemonStatus,
-      hasOperationError: displayedStatusMessage != nil
-        && !isCheckingChargingDaemon
+      daemonStatus: state.daemonStatus,
+      connectionStatus: state.connectionStatus,
+      isDeterminingStatus: state.isDeterminingDaemonStatus,
+      hasOperationError: state.displayedStatusMessage != nil
+        && !state.isCheckingChargingDaemon
     )
   }
 
@@ -57,16 +39,16 @@ struct ChargingManagementSection: View {
     Section {
       ChargingDaemonLifecycleSection(
         presentation: serviceStatusPresentation,
-        isUninstalling: isUninstalling,
-        isBusy: isCheckingChargingDaemon,
-        errorMessage: uninstallErrorMessage,
-        requestUninstall: requestUninstall
+        isUninstalling: state.isUninstalling,
+        isBusy: state.isCheckingChargingDaemon,
+        errorMessage: state.uninstallErrorMessage,
+        requestUninstall: actions.requestUninstall
       )
 
       Toggle("Manage charging", isOn: manageCharging)
         .disabled(
           !hasAnyControl
-            || isCheckingChargingDaemon
+            || state.isCheckingChargingDaemon
             || managementState.isSaving
         )
 
@@ -87,15 +69,15 @@ struct ChargingManagementSection: View {
         )
       }
 
-      if shouldShowApprovalPrompt {
+      if state.shouldShowApprovalPrompt {
         LabeledContent {
           HStack(spacing: SettingsLayout.controlSpacing) {
             Button("Open Login Items", systemImage: "gear") {
-              openApprovalSettings()
+              actions.openApprovalSettings()
             }
 
             Button("Check Again", systemImage: "arrow.clockwise") {
-              checkApprovalStatus()
+              actions.checkApprovalStatus()
             }
           }
           .padding(.top, 4)
@@ -106,13 +88,13 @@ struct ChargingManagementSection: View {
         }
       }
 
-      if let displayedStatusMessage,
+      if let displayedStatusMessage = state.displayedStatusMessage,
          serviceStatusPresentation.recoveryAction != nil {
         ChargingDaemonStatusRow(
           message: displayedStatusMessage,
           presentation: serviceStatusPresentation,
-          retry: requestEnableChargingManagement,
-          reconnect: reconnectChargingDaemon
+          retry: actions.requestEnableChargingManagement,
+          reconnect: actions.reconnectChargingDaemon
         )
       }
 
