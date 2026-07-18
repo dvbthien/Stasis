@@ -5,7 +5,7 @@ import SwiftUI
 @MainActor
 struct BatteryRenderer {
 
-  // MARK: - 1. CACHE TRẠNG THÁI GẦN NHẤT
+  // MARK: - 1. RENDER CACHE
   private static var lastStateKey: String = ""
   private static var lastRenderedImage: NSImage? = nil
 
@@ -18,7 +18,7 @@ struct BatteryRenderer {
     showState: Bool
   ) -> NSImage? {
 
-    // Khởi tạo State Context đóng gói tất cả logic tính toán biến số (Giống SwiftUI Properties)
+    // Build the render context.
     let ctx = RenderContext(
       level: level,
       chargingMode: chargingMode,
@@ -27,15 +27,15 @@ struct BatteryRenderer {
       showState: showState
     )
 
-    // Kiểm tra Bộ nhớ đệm (Cache)
+    // Reuse an unchanged render.
     if ctx.stateKey == lastStateKey, let cachedImage = lastRenderedImage {
       return cachedImage
     }
 
-    // Tiến hành dựng Canvas đồ họa dựa trên kích thước tính toán được
+    // Render at the target size.
     let finalImage = NSImage(size: ctx.targetSize, flipped: false) { rect in
 
-      // Bước A: Vẽ chữ số phần trăm nằm bên ngoài (Chế độ kế bên Icon)
+      // Draw the outside percentage.
       if ctx.shouldShowOutsidePercentage {
         ctx.outsideText.draw(
           at: ctx.outsideTextPoint(in: rect),
@@ -43,25 +43,25 @@ struct BatteryRenderer {
         )
       }
 
-      // Bố cục dùng chung tính MỘT lần để cả 3 layer luôn khớp nhau
+      // Share one layout across all layers.
       let bodyRect = ctx.bodyRect(in: rect)
       let plan = ctx.isInsideMode
         ? insidePlan(in: bodyRect, context: ctx)
         : nil
 
-      // Bước B: Vẽ Khung & Núm pin (Outline Layer)
+      // Draw the body and terminal.
       drawOutlineLayer(in: rect, bodyRect: bodyRect, plan: plan, context: ctx)
 
-      // Bước C: Vẽ Thanh năng lượng (Fill Layer)
+      // Draw the level fill.
       drawFillLayer(bodyRect: bodyRect, plan: plan, context: ctx)
 
-      // Bước D: Vẽ Nội dung đè phía trên (Glyph / Chữ số bên trong)
+      // Draw the foreground content.
       drawForegroundLayer(in: rect, plan: plan, context: ctx)
 
       return true
     }
 
-    // Lưu Cache
+    // Cache the result.
     lastStateKey = ctx.stateKey
     lastRenderedImage = finalImage
 
@@ -69,12 +69,16 @@ struct BatteryRenderer {
   }
 }
 
-// MARK: - 3. ĐÓNG GÓI BIẾN SỐ & LOGIC TÍNH TOÁN (Tương đương SwiftUI Computed Properties)
+// MARK: - 3. RENDER STATE
 extension BatteryRenderer {
 
-  /// Các thông số hình học và kiểu vẽ tập trung tại một nơi để dễ tinh chỉnh.
+  /// Shared drawing constants.
   private enum Layout {
-    static let canvasHeight: CGFloat = 24
+    /// Matches the active status bar height to avoid scaling or clipping.
+    static var canvasHeight: CGFloat {
+      let thickness = NSStatusBar.system.thickness
+      return thickness > 0 ? thickness : 22
+    }
 
     static let insideBodyWidth: CGFloat = 28
     static let insideBodyHeight: CGFloat = 13
@@ -111,8 +115,6 @@ extension BatteryRenderer {
 
     static let fullBatteryLevel: CGFloat = 100
     static let criticalBatteryLevel = 20
-    static let chargingSymbolName = "bolt.fill"
-    static let pluggedInSymbolName = "powerplug.portrait.fill"
 
     static let foregroundColor = NSColor.textColor
     /// Uses the icon tone at reduced opacity, matching the iOS empty track.
@@ -136,7 +138,7 @@ extension BatteryRenderer {
     let displayLocation: PercentageDisplayLocation
     let showState: Bool
 
-    // Các trạng thái logic (Booleans)
+    // State flags.
     var isInsideMode: Bool { displayLocation == .insideIcon }
     var shouldShowOutsidePercentage: Bool { displayLocation == .nextToIcon }
     var isCritical: Bool {
@@ -146,7 +148,7 @@ extension BatteryRenderer {
       !isCritical && !isLowPower && chargingMode != .charging
     }
 
-    // Cấu hình Kích thước động dựa trên Chế độ hiển thị
+    // Mode-specific dimensions.
     var bodyWidth: CGFloat {
       isInsideMode ? Layout.insideBodyWidth : Layout.outsideBodyWidth
     }
@@ -157,7 +159,7 @@ extension BatteryRenderer {
       isInsideMode ? Layout.insideCornerRadius : Layout.outsideCornerRadius
     }
 
-    // Chuỗi Văn Bản & Định dạng nghệ thuật
+    // Percentage text styling.
     var outsideText: String { "\(level)%" }
     var outsideAttributes: [NSAttributedString.Key: Any] {
       [
@@ -169,7 +171,7 @@ extension BatteryRenderer {
       outsideText.size(withAttributes: outsideAttributes)
     }
 
-    // Tính toán Tọa độ X bắt đầu của Thân Pin
+    // Battery body origin.
     var batteryXOffset: CGFloat {
       if !isInsideMode && shouldShowOutsidePercentage {
         return Layout.batteryLeadingInset + outsideTextSize.width
@@ -178,7 +180,7 @@ extension BatteryRenderer {
       return Layout.batteryLeadingInset
     }
 
-    // Tính toán Tổng kích thước vùng vẽ
+    // Canvas size.
     var targetSize: NSSize {
       var width = bodyWidth + Layout.batteryLeadingInset
         + Layout.capSpacing + Layout.capWidth
@@ -188,7 +190,7 @@ extension BatteryRenderer {
       return NSSize(width: width, height: Layout.canvasHeight)
     }
 
-    // Bảng Màu Động (Dynamic Color Matching)
+    // State color.
     var fillColor: NSColor {
       if isCritical { return Layout.criticalFillColor }
       if isLowPower { return Layout.lowPowerFillColor }
@@ -196,12 +198,12 @@ extension BatteryRenderer {
       return Layout.foregroundColor
     }
 
-    // Tạo khóa định danh duy nhất cho bộ nhớ đệm
+    // Render cache key.
     var stateKey: String {
       "\(level)_\(chargingMode)_\(isLowPower)_\(displayLocation)_\(showState)_\(NSApp.effectiveAppearance.name)"
     }
 
-    // Hàm phụ trợ tính tọa độ vẽ chữ ngoài
+    // Outside text origin.
     func outsideTextPoint(in rect: NSRect) -> NSPoint {
       NSPoint(
         x: Layout.batteryLeadingInset,
@@ -209,7 +211,7 @@ extension BatteryRenderer {
       )
     }
 
-    // Khung thân pin căn giữa theo chiều dọc vùng vẽ
+    // Center the body vertically.
     func bodyRect(in rect: NSRect) -> NSRect {
       NSRect(
         x: batteryXOffset,
@@ -221,20 +223,19 @@ extension BatteryRenderer {
   }
 }
 
-// MARK: - 4. PHÂN TÁCH CÁC HÀM VẼ ĐỒ HỌA (Sub-Rendering Layers)
+// MARK: - 4. DRAWING LAYERS
 extension BatteryRenderer {
 
-  /// BƯỚC B: Vẽ Khung và Núm Pin
+  /// Draws the body and terminal.
   private static func drawOutlineLayer(
     in rect: NSRect,
     bodyRect: NSRect,
     plan: InsidePlan?,
     context: RenderContext
   ) {
-    // 1. Vẽ thân pin
+    // Draw the body.
     if let plan {
-      // Nền mờ chỉ vẽ ở phần chưa có năng lượng — fill trực tiếp path bo góc
-      // (không dùng blend mode .copy) để mép cong được antialias mượt
+      // Draw the track only in the unfilled region.
       if plan.fillWidth < bodyRect.width {
         NSGraphicsContext.current?.saveGraphicsState()
         NSBezierPath(
@@ -262,7 +263,7 @@ extension BatteryRenderer {
       path.stroke()
     }
 
-    // 2. Vẽ núm pin (Cap)
+    // Draw the terminal.
     let capRect = NSRect(
       x: bodyRect.maxX + Layout.capSpacing,
       y: (rect.height - Layout.capHeight) / 2,
@@ -280,7 +281,7 @@ extension BatteryRenderer {
     ).fill()
   }
 
-  /// BƯỚC C: Vẽ Thanh Dung Lượng Pin Chạy Theo Phần Trăm
+  /// Draws the level fill.
   private static func drawFillLayer(
     bodyRect: NSRect,
     plan: InsidePlan?,
@@ -289,8 +290,7 @@ extension BatteryRenderer {
     if let plan {
       if plan.fillWidth > 0 {
         NSGraphicsContext.current?.saveGraphicsState()
-        // Chỉ clip bằng hình chữ nhật thẳng trục (mép đứng không cần antialias);
-        // góc cong đến từ chính path bo góc được fill nên luôn mượt
+        // Clip the level edge; the body path preserves rounded corners.
         if plan.fillWidth < bodyRect.width {
           NSBezierPath(
             rect: NSRect(
@@ -312,7 +312,7 @@ extension BatteryRenderer {
           * CGFloat(context.level) / Layout.fullBatteryLevel
       )
       if fillWidth > 0 {
-        // Thụt đều theo cấu hình để fill nằm cân đối trong khung ngoài.
+        // Inset the fill evenly.
         fillRect(
           NSRect(
             x: context.batteryXOffset + Layout.outsideFillInset,
@@ -347,8 +347,7 @@ extension BatteryRenderer {
     let glyphZones: [GlyphZone]
   }
 
-  /// Bố cục inside dùng chung cho cả 3 layer — tính MỘT lần mỗi lần render
-  /// để mép nền, mép fill và vị trí chữ không bao giờ lệch nhau.
+  /// Keeps all inside layers aligned.
   private struct InsidePlan {
     let fillWidth: CGFloat
     let layout: InsideForegroundLayout
@@ -369,18 +368,17 @@ extension BatteryRenderer {
     )
   }
 
+  private static var stateSymbolCache: [String: NSImage] = [:]
+
   private static func stateSymbol(
     for chargingMode: ChargingMode,
     pointSize: CGFloat
   ) -> NSImage? {
-    let symbolName: String
-    switch chargingMode {
-    case .charging:
-      symbolName = Layout.chargingSymbolName
-    case .pluggedIn:
-      symbolName = Layout.pluggedInSymbolName
-    case .discharging:
-      return nil
+    guard let symbolName = chargingMode.symbolName else { return nil }
+
+    let cacheKey = "\(symbolName)-\(pointSize)"
+    if let cached = stateSymbolCache[cacheKey] {
+      return cached
     }
 
     guard let symbol = NSImage(
@@ -397,9 +395,11 @@ extension BatteryRenderer {
     let colorConfiguration = NSImage.SymbolConfiguration(
       hierarchicalColor: Layout.foregroundColor
     )
-    return symbol.withSymbolConfiguration(
+    let configured = symbol.withSymbolConfiguration(
       sizeConfiguration.applying(colorConfiguration)
     )
+    stateSymbolCache[cacheKey] = configured
+    return configured
   }
 
   private static func insideForegroundLayout(
@@ -545,7 +545,7 @@ extension BatteryRenderer {
     return min(max(snappedEdgeX - bodyRect.minX, 0), bodyRect.width)
   }
 
-  /// BƯỚC D: Vẽ Chữ Số Đè Bên Trong Hoặc Ký Hiệu Sạc (Bolt/Plug)
+  /// Draws the inside percentage and status symbol.
   private static func drawForegroundLayer(
     in rect: NSRect,
     plan: InsidePlan?,
@@ -555,7 +555,7 @@ extension BatteryRenderer {
     if let plan {
       let layout = plan.layout
 
-      // Kỹ thuật đục lỗ (Knockout) — chỉ save/restore khi thực sự cần đổi blend mode
+      // Apply the knockout blend mode.
       if context.usesPassthroughKnockout {
         NSGraphicsContext.current?.saveGraphicsState()
         NSGraphicsContext.current?.cgContext.setBlendMode(
@@ -663,7 +663,7 @@ extension BatteryRenderer {
 
 #Preview {
   VStack(alignment: .leading, spacing: 16) {
-    // --- NHÓM 1: HIỂN THỊ TIÊU CHUẨN (KHÔNG CHỮ) ---
+    // Standard display without a percentage.
     Group {
       Text("Màu sắc theo trạng thái (Ẩn phần trăm)")
         .font(.headline).foregroundStyle(.secondary)
@@ -734,7 +734,7 @@ extension BatteryRenderer {
 
     Divider()
 
-    // --- NHÓM 2: CHỮ BÊN TRONG VIÊN PIN (KNOCKOUT) ---
+    // Inside percentage with knockout.
     Group {
       Text("Chữ đục lỗ bên trong (.insideIcon)")
         .font(.headline).foregroundStyle(.secondary)
@@ -794,7 +794,7 @@ extension BatteryRenderer {
 
     Divider()
 
-    // --- NHÓM 3: CHỮ BÊN CẠNH VIÊN PIN ---
+    // Percentage next to the battery.
     Group {
       Text("Chữ nằm bên cạnh (.nextToIcon)")
         .font(.headline).foregroundStyle(.secondary)
@@ -822,8 +822,8 @@ extension BatteryRenderer {
     }
   }
   .padding()
-  // Giả lập màu nền giống Menu Bar của macOS để dễ quan sát nét vẽ
+  // Simulate the menu bar background.
   .background(Color(NSColor.windowBackgroundColor))
-  // Bạn có thể đổi .dark thành .light tại đây để test khả năng tự đổi màu viền của Renderer
+  // Switch schemes to test dynamic colors.
   .preferredColorScheme(.dark)
 }
