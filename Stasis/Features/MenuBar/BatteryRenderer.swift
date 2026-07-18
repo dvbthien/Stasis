@@ -105,8 +105,8 @@ extension BatteryRenderer {
     static let outsideFillInset: CGFloat = 1.5
     static let outsideFillCornerRadius: CGFloat = 1.5
 
-    static let glyphAntialiasPadding: CGFloat = 0.5
-    static let fallbackDisplayScale: CGFloat = 2
+    static let glyphAntialiasPadding: CGFloat = 0.25
+    static let maximumGlyphSnapPercentage: CGFloat = 1
     static let symbolHaloRadius: CGFloat = 0.75
 
     static let fullBatteryLevel: CGFloat = 100
@@ -333,12 +333,9 @@ extension BatteryRenderer {
     .foregroundColor: Layout.foregroundColor,
   ]
 
-  /// Vùng chiếm chỗ theo trục X của một glyph (đã đệm antialias):
-  /// mép fill rơi vào `range` sẽ được snap ra `leadingEdgeX` / `trailingEdgeX`.
+  /// Vùng theo trục X mà mép fill có thể cắt vào nét của glyph.
   private struct GlyphZone {
     let range: ClosedRange<CGFloat>
-    let leadingEdgeX: CGFloat
-    let trailingEdgeX: CGFloat
   }
 
   private struct InsideForegroundLayout {
@@ -346,7 +343,6 @@ extension BatteryRenderer {
     let percentagePoint: NSPoint
     let symbolImage: NSImage?
     let symbolRect: NSRect?
-    /// Các vùng cấm đã gộp chồng lấn, theo thứ tự trái sang phải
     let glyphZones: [GlyphZone]
   }
 
@@ -443,8 +439,7 @@ extension BatteryRenderer {
       )
     }
 
-    // Đo vùng cấm của từng glyph (chữ số + ký hiệu trạng thái)
-    var zones: [GlyphZone] = []
+    var glyphZones: [GlyphZone] = []
     var characterOriginX = percentagePoint.x
     for character in percentageText {
       let characterText = String(character)
@@ -459,30 +454,18 @@ extension BatteryRenderer {
         options: [.usesDeviceMetrics],
         attributes: batteryTextAttributes
       )
-      let paddedMinX =
-        characterOriginX + characterInkBounds.minX
+      let paddedMinX = characterOriginX + characterInkBounds.minX
         - Layout.glyphAntialiasPadding
-      let paddedMaxX =
-        characterOriginX + characterInkBounds.maxX
+      let paddedMaxX = characterOriginX + characterInkBounds.maxX
         + Layout.glyphAntialiasPadding
-      zones.append(
-        GlyphZone(
-          range: paddedMinX...paddedMaxX,
-          leadingEdgeX: min(characterOriginX, paddedMinX),
-          trailingEdgeX: max(characterOriginX + characterAdvance, paddedMaxX)
-        )
-      )
+      glyphZones.append(GlyphZone(range: paddedMinX...paddedMaxX))
       characterOriginX += characterAdvance
     }
     if let symbolRect {
       let paddedMinX = symbolRect.minX - Layout.glyphAntialiasPadding
       let paddedMaxX = symbolRect.maxX + Layout.glyphAntialiasPadding
-      zones.append(
-        GlyphZone(
-          range: paddedMinX...paddedMaxX,
-          leadingEdgeX: paddedMinX,
-          trailingEdgeX: paddedMaxX
-        )
+      glyphZones.append(
+        GlyphZone(range: paddedMinX...paddedMaxX)
       )
     }
 
@@ -491,16 +474,13 @@ extension BatteryRenderer {
       percentagePoint: percentagePoint,
       symbolImage: symbolImage,
       symbolRect: symbolRect,
-      glyphZones: mergedGlyphZones(zones)
+      glyphZones: mergedGlyphZones(glyphZones)
     )
   }
 
-  /// Gộp các vùng cấm chồng lấn (kể cả phần đệm antialias của glyph kế bên)
-  /// để mép sau khi snap không bao giờ rơi vào một vùng cấm khác.
   private static func mergedGlyphZones(_ zones: [GlyphZone]) -> [GlyphZone] {
     var merged: [GlyphZone] = []
-    for zone in zones.sorted(by: { $0.range.lowerBound < $1.range.lowerBound })
-    {
+    for zone in zones.sorted(by: { $0.range.lowerBound < $1.range.lowerBound }) {
       guard let last = merged.last,
         zone.range.lowerBound <= last.range.upperBound
       else {
@@ -511,9 +491,7 @@ extension BatteryRenderer {
         range: last.range.lowerBound...max(
           last.range.upperBound,
           zone.range.upperBound
-        ),
-        leadingEdgeX: min(last.leadingEdgeX, zone.leadingEdgeX),
-        trailingEdgeX: max(last.trailingEdgeX, zone.trailingEdgeX)
+        )
       )
     }
     return merged
@@ -530,50 +508,40 @@ extension BatteryRenderer {
     )
   }
 
-  /// Chiều rộng thanh năng lượng, đã snap tránh glyph và căn theo pixel vật lý
-  /// để mép ranh giới giữa fill và nền luôn sắc nét.
+  /// Chỉ snap khi mép fill ở rất sát mép glyph. Sai số bị giới hạn tối đa một
+  /// điểm phần trăm; nếu cần dịch xa hơn thì ưu tiên giữ đúng mức pin thực tế.
   private static func insideFillWidth(
     in bodyRect: NSRect,
     layout: InsideForegroundLayout,
     context: RenderContext
   ) -> CGFloat {
-    let rawFillWidth = max(
-      0,
-      context.bodyWidth * CGFloat(context.level) / Layout.fullBatteryLevel
+    let rawFillWidth = min(
+      max(
+        0,
+        context.bodyWidth * CGFloat(context.level)
+          / Layout.fullBatteryLevel
+      ),
+      context.bodyWidth
     )
-    let snappedWidth = snappedInsideFillWidth(
-      rawFillWidth,
-      in: bodyRect,
-      layout: layout,
-      context: context
-    )
-    let scale = NSGraphicsContext.current
-      .map { abs($0.cgContext.ctm.a) } ?? Layout.fallbackDisplayScale
-    guard scale > 0 else { return snappedWidth }
-    return (snappedWidth * scale).rounded() / scale
-  }
-
-  /// Giữ mép fill không cắt ngang glyph nào: nếu rơi vào vùng cấm thì snap về
-  /// mép GẦN HƠN của vùng đó, để sai số mức pin hiển thị là nhỏ nhất.
-  private static func snappedInsideFillWidth(
-    _ rawFillWidth: CGFloat,
-    in bodyRect: NSRect,
-    layout: InsideForegroundLayout,
-    context: RenderContext
-  ) -> CGFloat {
     guard context.usesPassthroughKnockout else { return rawFillWidth }
 
     let rawEdgeX = bodyRect.minX + rawFillWidth
-    guard
-      let zone = layout.glyphZones.first(where: {
-        $0.range.contains(rawEdgeX)
-      })
-    else { return rawFillWidth }
+    guard let zone = layout.glyphZones.first(where: {
+      $0.range.contains(rawEdgeX)
+    }) else {
+      return rawFillWidth
+    }
 
-    let snappedEdgeX =
-      rawEdgeX - zone.leadingEdgeX <= zone.trailingEdgeX - rawEdgeX
-      ? zone.leadingEdgeX
-      : zone.trailingEdgeX
+    let distanceToLeadingEdge = rawEdgeX - zone.range.lowerBound
+    let distanceToTrailingEdge = zone.range.upperBound - rawEdgeX
+    let snapDistance = min(distanceToLeadingEdge, distanceToTrailingEdge)
+    let maximumSnapDistance = context.bodyWidth
+      * Layout.maximumGlyphSnapPercentage / Layout.fullBatteryLevel
+    guard snapDistance <= maximumSnapDistance else { return rawFillWidth }
+
+    let snappedEdgeX = distanceToLeadingEdge <= distanceToTrailingEdge
+      ? zone.range.lowerBound
+      : zone.range.upperBound
     return min(max(snappedEdgeX - bodyRect.minX, 0), bodyRect.width)
   }
 
