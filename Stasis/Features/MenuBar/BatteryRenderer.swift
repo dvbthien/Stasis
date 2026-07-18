@@ -103,7 +103,7 @@ extension BatteryRenderer {
     static let symbolSpacing: CGFloat = 0.75
     static let symbolWeight: NSFont.Weight = .bold
 
-    static let insideTrackOpacity: CGFloat = 0.28
+    static let insideTrackOpacity: CGFloat = 0.42
     static let outsideOutlineOpacity: CGFloat = 0.4
     static let outsideOutlineWidth: CGFloat = 1
     static let outsideFillInset: CGFloat = 1.5
