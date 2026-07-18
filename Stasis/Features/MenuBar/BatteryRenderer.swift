@@ -99,7 +99,7 @@ extension BatteryRenderer {
     static let symbolSpacing: CGFloat = 0.75
     static let symbolWeight: NSFont.Weight = .bold
 
-    static let insideTrackOpacity: CGFloat = 0.3
+    static let insideTrackOpacity: CGFloat = 0.28
     static let outsideOutlineOpacity: CGFloat = 0.4
     static let outsideOutlineWidth: CGFloat = 1
     static let outsideFillInset: CGFloat = 1.5
@@ -115,7 +115,10 @@ extension BatteryRenderer {
     static let pluggedInSymbolName = "powerplug.portrait.fill"
 
     static let foregroundColor = NSColor.textColor
-    static let insideTrackColor = NSColor.labelColor
+    /// Uses the icon tone at reduced opacity, matching the iOS empty track.
+    static var insideTrackColor: NSColor {
+      foregroundColor.withAlphaComponent(insideTrackOpacity)
+    }
     static let criticalFillColor = NSColor.systemRed
     static let chargingFillColor = NSColor.systemGreen
     static let lowPowerFillColor = NSColor(
@@ -242,9 +245,7 @@ extension BatteryRenderer {
             height: bodyRect.height
           )
         ).addClip()
-        Layout.insideTrackColor.withAlphaComponent(
-          Layout.insideTrackOpacity
-        ).setFill()
+        Layout.insideTrackColor.setFill()
         insideBodyPath(bodyRect, context: context).fill()
         NSGraphicsContext.current?.restoreGraphicsState()
       }
@@ -333,7 +334,7 @@ extension BatteryRenderer {
     .foregroundColor: Layout.foregroundColor,
   ]
 
-  /// Vùng theo trục X mà mép fill có thể cắt vào nét của glyph.
+  /// Horizontal ink bounds used to keep the fill edge off a glyph.
   private struct GlyphZone {
     let range: ClosedRange<CGFloat>
   }
@@ -508,8 +509,7 @@ extension BatteryRenderer {
     )
   }
 
-  /// Chỉ snap khi mép fill ở rất sát mép glyph. Sai số bị giới hạn tối đa một
-  /// điểm phần trăm; nếu cần dịch xa hơn thì ưu tiên giữ đúng mức pin thực tế.
+  /// Snaps only near glyph edges, capped at 1% to preserve level accuracy.
   private static func insideFillWidth(
     in bodyRect: NSRect,
     layout: InsideForegroundLayout,
