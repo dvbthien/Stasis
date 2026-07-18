@@ -8,10 +8,6 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             .init(isEnabled: true), using: handler.setChargingManagementSettings
         )
         XCTAssertTrue(management.isEnabled)
-        let fetchedManagement: ChargingManagementSettings = try await get(
-            using: handler.getChargingManagementSettings
-        )
-        XCTAssertEqual(fetchedManagement, management)
 
         let threshold: ChargingThresholdSettings = try await set(
             .init(chargeLimit: 75, sailingModeEnabled: true, sailingDelta: 5),
@@ -43,6 +39,15 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             .init(useHardwarePercentage: true), using: handler.setBatteryPercentageSettings
         )
         XCTAssertTrue(percentage.useHardwarePercentage)
+
+        let bundle: DaemonSettingsBundle = try await get(using: handler.getAllSettings)
+        XCTAssertEqual(bundle.management, management)
+        XCTAssertEqual(bundle.threshold, threshold)
+        XCTAssertEqual(bundle.automaticDischarge, discharge)
+        XCTAssertEqual(bundle.sleepPrevention, sleep)
+        XCTAssertEqual(bundle.heatProtection, heat)
+        XCTAssertEqual(bundle.magSafeLED, led)
+        XCTAssertEqual(bundle.batteryPercentage, percentage)
     }
 
     func testMalformedPayloadIsRejectedAndStateIsPreserved() async throws {
@@ -51,8 +56,8 @@ final class ChargingDaemonCommandHandlerTests: XCTestCase {
             handler.setChargingThresholdSettings(payload: Data("bad".utf8), reply: reply)
         }
         XCTAssertNotNil(error)
-        let settings: ChargingThresholdSettings = try await get(using: handler.getChargingThresholdSettings)
-        XCTAssertEqual(settings, .init())
+        let bundle: DaemonSettingsBundle = try await get(using: handler.getAllSettings)
+        XCTAssertEqual(bundle.threshold, .init())
     }
 
     func testInvalidGroupPayloadIsRejected() async throws {

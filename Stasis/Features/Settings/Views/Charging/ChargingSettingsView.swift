@@ -102,7 +102,7 @@ struct ChargingSettingsView: View {
     private var isCheckingChargingDaemon: Bool {
         previewState.map { $0.isVerifying || $0.isUninstalling }
             ?? (chargingController.isLoading
-                || settingsModel.isSaving)
+                || settingsModel.managementState.isSaving)
     }
 
     private var isDeterminingDaemonStatus: Bool {
@@ -124,10 +124,11 @@ struct ChargingSettingsView: View {
         previewState?.errorMessage ?? chargingController.flowState.message
     }
 
+    /// Derived from the daemon status alone so the prompt appears even when
+    /// approval is revoked outside the enable flow (e.g. after reinstalling
+    /// the app with a changed daemon).
     private var shouldShowApprovalPrompt: Bool {
-        guard daemonStatus == .requiresApproval else { return false }
-        return previewState != nil
-            || chargingController.flowState.showsApprovalPrompt
+        daemonStatus == .requiresApproval && !isUninstalling
     }
 
     private var isChargingDaemonReady: Bool {

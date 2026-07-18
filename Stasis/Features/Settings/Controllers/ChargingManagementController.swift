@@ -171,6 +171,13 @@ final class ChargingManagementController {
       return
     }
 
+    if daemonManager.daemonStatus == .requiresApproval {
+      flowState = .waitingForApproval(
+        "Approve Stasis in System Settings to enable charge management."
+      )
+      return
+    }
+
     guard
       hasAnyControl,
       daemonManager.daemonStatus == .installed,
@@ -221,19 +228,29 @@ final class ChargingManagementController {
   func handleDaemonStatusChange(
     _ newStatus: ChargingDaemonStatus
   ) {
+    guard uninstallTask == nil else { return }
+
+    // Approval can be revoked or granted outside the enable flow (e.g. a
+    // reinstall with a changed daemon), so track it unconditionally.
+    if newStatus == .requiresApproval {
+      flowState = .waitingForApproval(
+        "Approve Stasis in System Settings to enable charge management."
+      )
+      return
+    }
+    if flowState.showsApprovalPrompt {
+      flowState = .idle
+    }
+
     guard enableRequested else { return }
 
     switch newStatus {
-    case .installed:
+    case .installed, .requiresApproval:
       // The enable flow drives its own state transitions once the
       // daemon is installed; don't clobber them here.
       break
     case .notInstalled:
       flowState = .failed("Charging daemon is not installed.")
-    case .requiresApproval:
-      flowState = .waitingForApproval(
-        "Approve Stasis in System Settings to enable charge management."
-      )
     }
   }
 

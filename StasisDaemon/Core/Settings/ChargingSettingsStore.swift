@@ -54,6 +54,18 @@ actor ChargingSettingsStore {
     func magSafeLEDSettings() -> MagSafeLEDSettings { magSafeLED }
     func batteryPercentageSettings() -> BatteryPercentageSettings { batteryPercentage }
 
+    func allSettings() -> DaemonSettingsBundle {
+        DaemonSettingsBundle(
+            management: management,
+            threshold: threshold,
+            automaticDischarge: automaticDischarge,
+            sleepPrevention: sleepPrevention,
+            heatProtection: heatProtection,
+            magSafeLED: magSafeLED,
+            batteryPercentage: batteryPercentage
+        )
+    }
+
     func setChargingManagementSettings(
         _ settings: ChargingManagementSettings
     ) -> ChargingManagementSettings {

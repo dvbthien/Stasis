@@ -57,8 +57,8 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         sendEncodedResponse(reply: reply) { [runtime] in await runtime.currentSnapshot() }
     }
 
-    func getChargingManagementSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.chargingManagementSettings() }
+    func getAllSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
+        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.allSettings() }
     }
 
     func setChargingManagementSettings(
@@ -70,10 +70,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         }
     }
 
-    func getChargingThresholdSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.chargingThresholdSettings() }
-    }
-
     func setChargingThresholdSettings(
         payload: Data,
         reply: @escaping @Sendable (Data?, String?) -> Void
@@ -81,10 +77,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         decodePersistAndReconcile(payload, as: ChargingThresholdSettings.self, reply: reply) { store, value in
             try await store.setChargingThresholdSettings(value)
         }
-    }
-
-    func getAutomaticDischargeSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.automaticDischargeSettings() }
     }
 
     func setAutomaticDischargeSettings(
@@ -96,10 +88,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         }
     }
 
-    func getSleepPreventionSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.sleepPreventionSettings() }
-    }
-
     func setSleepPreventionSettings(
         payload: Data,
         reply: @escaping @Sendable (Data?, String?) -> Void
@@ -107,10 +95,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         decodePersistAndReconcile(payload, as: SleepPreventionSettings.self, reply: reply) { store, value in
             await store.setSleepPreventionSettings(value)
         }
-    }
-
-    func getHeatProtectionSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.heatProtectionSettings() }
     }
 
     func setHeatProtectionSettings(
@@ -122,10 +106,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         }
     }
 
-    func getMagSafeLEDSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.magSafeLEDSettings() }
-    }
-
     func setMagSafeLEDSettings(
         payload: Data,
         reply: @escaping @Sendable (Data?, String?) -> Void
@@ -133,10 +113,6 @@ final class ChargingDaemonCommandHandler: NSObject, ChargingDaemonProtocol, @unc
         decodePersistAndReconcile(payload, as: MagSafeLEDSettings.self, reply: reply) { store, value in
             await store.setMagSafeLEDSettings(value)
         }
-    }
-
-    func getBatteryPercentageSettings(reply: @escaping @Sendable (Data?, String?) -> Void) {
-        sendEncodedResponse(reply: reply) { [settingsStore] in await settingsStore.batteryPercentageSettings() }
     }
 
     func setBatteryPercentageSettings(
