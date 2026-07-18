@@ -196,9 +196,14 @@ extension BatteryRenderer {
     )
 
     if context.isInsideMode {
-      let fillWidth = max(
+      let rawFillWidth = max(
         0,
         context.bodyWidth * CGFloat(context.level) / 100
+      )
+      let fillWidth = snappedInsideFillWidth(
+        rawFillWidth,
+        in: bodyRect,
+        context: context
       )
       if fillWidth > 0 {
         NSGraphicsContext.current?.saveGraphicsState()
@@ -250,6 +255,68 @@ extension BatteryRenderer {
     .strokeWidth: -5.0,
   ]
 
+  /// Keeps the fill edge away from the middle of any visible character so each
+  /// digit or state glyph remains on one background color.
+  private static func snappedInsideFillWidth(
+    _ rawFillWidth: CGFloat,
+    in bodyRect: NSRect,
+    context: RenderContext
+  ) -> CGFloat {
+    guard context.usesPassthroughKnockout else { return rawFillWidth }
+
+    let percentageText = "\(context.level)"
+    let glyph = context.chargingMode == .charging ? "􀋦" : "􂬺"
+    let foregroundText =
+      context.chargingMode == .discharging
+      ? percentageText
+      : "\(percentageText)\(glyph)"
+    let foregroundInkBounds = foregroundText.boundingRect(
+      with: NSSize(
+        width: CGFloat.greatestFiniteMagnitude,
+        height: CGFloat.greatestFiniteMagnitude
+      ),
+      options: [.usesDeviceMetrics],
+      attributes: batteryTextAttributes
+    )
+    let foregroundOriginX = bodyRect.midX - foregroundInkBounds.midX
+    let rawEdgeX = bodyRect.minX + rawFillWidth
+
+    var characterOriginX = foregroundOriginX
+    for character in foregroundText {
+      let characterText = String(character)
+      let characterSize = characterText.size(
+        withAttributes: batteryTextAttributes
+      )
+      let characterInkBounds = characterText.boundingRect(
+        with: NSSize(
+          width: CGFloat.greatestFiniteMagnitude,
+          height: CGFloat.greatestFiniteMagnitude
+        ),
+        options: [.usesDeviceMetrics],
+        attributes: batteryTextAttributes
+      )
+      let inkRange = (
+        min: characterOriginX + characterInkBounds.minX,
+        max: characterOriginX + characterInkBounds.maxX
+      )
+
+      if inkRange.min...inkRange.max ~= rawEdgeX {
+        let leadingEdgeX = characterOriginX
+        let trailingEdgeX = characterOriginX + characterSize.width
+        let snappedEdgeX =
+          abs(rawEdgeX - leadingEdgeX) < abs(trailingEdgeX - rawEdgeX)
+          ? leadingEdgeX
+          : trailingEdgeX
+
+        return min(max(snappedEdgeX - bodyRect.minX, 0), bodyRect.width)
+      }
+
+      characterOriginX += characterSize.width
+    }
+
+    return rawFillWidth
+  }
+
   /// BƯỚC D: Vẽ Chữ Số Đè Bên Trong Hoặc Ký Hiệu Sạc (Bolt/Plug)
   private static func drawForegroundLayer(
     in rect: NSRect,
@@ -261,12 +328,28 @@ extension BatteryRenderer {
       let batteryText =
         isDischarging ? "\(context.level)" : "\(context.level)\(glyph)"
 
+      let bodyRect = NSRect(
+        x: context.batteryXOffset,
+        y: (rect.height - context.bodyHeight) / 2,
+        width: context.bodyWidth,
+        height: context.bodyHeight
+      )
       let batteryTextSize = batteryText.size(withAttributes: batteryTextAttributes)
-
-      let batteryTextX =
-        context.batteryXOffset + (context.bodyWidth - batteryTextSize.width)
-        / 2
-      let batteryTextY = (rect.height - batteryTextSize.height) / 2 + 0.5
+      let batteryTextInkBounds = batteryText.boundingRect(
+        with: NSSize(
+          width: CGFloat.greatestFiniteMagnitude,
+          height: CGFloat.greatestFiniteMagnitude
+        ),
+        options: [.usesDeviceMetrics],
+        attributes: batteryTextAttributes
+      )
+      let batteryTextPoint = NSPoint(
+        // SF Symbols encoded as glyphs have asymmetric side bearings. Center the
+        // visible ink of the complete number + glyph group, including "100".
+        x: bodyRect.midX - batteryTextInkBounds.midX,
+        // Keep AppKit's line box for vertical placement so the baseline remains stable.
+        y: bodyRect.midY - batteryTextSize.height / 2
+      )
 
       // Kỹ thuật đục lỗ (Knockout) — chỉ save/restore khi thực sự cần đổi blend mode
       if context.usesPassthroughKnockout {
@@ -276,14 +359,14 @@ extension BatteryRenderer {
         )
 
         batteryText.draw(
-          at: NSPoint(x: batteryTextX, y: batteryTextY),
+          at: batteryTextPoint,
           withAttributes: batteryTextAttributes
         )
 
         NSGraphicsContext.current?.restoreGraphicsState()
       } else {
         batteryText.draw(
-          at: NSPoint(x: batteryTextX, y: batteryTextY),
+          at: batteryTextPoint,
           withAttributes: batteryTextAttributes
         )
       }
@@ -404,6 +487,23 @@ extension BatteryRenderer {
           }
         }
       }
+        HStack(spacing: 20) {
+          ForEach([100, 75, 60, 60, 61, 40, 25, 15], id: \.self) {
+            level in
+            if let insideImg = BatteryRenderer.render(
+              level: level,
+              chargingMode: .charging,
+              isLowPower: false,
+              displayLocation: .insideIcon,
+              showState: true
+            ) {
+              VStack {
+                Image(nsImage: insideImg)
+                Text("\(level)%").font(.caption)
+              }
+            }
+          }
+        }
     }
 
     Divider()
