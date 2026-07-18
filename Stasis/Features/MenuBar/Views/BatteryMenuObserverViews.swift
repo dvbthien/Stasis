@@ -63,7 +63,7 @@ struct PowerSankeyViewWrapper: View {
             useHardwarePercentage: useHardwarePercentage
         )
         PowerSankeyView(
-            powerSource: info.powerSource,
+            powerSource: info.sankeyPowerSource,
             isCharging: info.isCharging,
             batteryPower: info.batteryPower,
             adapterPower: info.adapterPower,

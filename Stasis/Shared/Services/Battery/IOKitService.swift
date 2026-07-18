@@ -151,9 +151,14 @@ class IOKitService {
             capacities.design > 0
             ? (capacities.max * 100) / capacities.design
             : 100
-
-        batteryMetrics.externalConnected =
-            getPropertyValue(batteryService, key: "ExternalConnected") ?? false
+        batteryMetrics.maxCapacity = capacities.max
+        batteryMetrics.designCapacity = capacities.design
+        if let powerSourceState = powerInfo?[kIOPSPowerSourceStateKey] as? String {
+            batteryMetrics.externalConnected = powerSourceState == kIOPSACPowerValue
+        } else {
+            batteryMetrics.externalConnected =
+                getPropertyValue(batteryService, key: "ExternalConnected") ?? false
+        }
 
         adapterMetrics.adapterConnected = isAdapterConnected()
 

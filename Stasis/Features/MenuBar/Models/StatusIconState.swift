@@ -20,7 +20,7 @@ struct StatusIconState: Equatable {
             ? metrics.hardwareBatteryPercentage
             : metrics.batteryPercentage
 
-        chargingMode = BatteryDisplayState.derive(metrics: metrics, adapter: adapter).chargingMode
+        chargingMode = BatteryDisplayState.derive(metrics: metrics).chargingMode
 
         self.isLowPower = isLowPower
         self.displayLocation = displayLocation

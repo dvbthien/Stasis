@@ -84,7 +84,7 @@ extension BatteryRenderer {
     static let insideBodyHeight: CGFloat = 14
     static let outsideBodyWidth: CGFloat = 23
     static let outsideBodyHeight: CGFloat = 11
-    static let insideCornerRadius: CGFloat = 4
+    static let insideCornerRadius: CGFloat = 3
     static let outsideCornerRadius: CGFloat = 3
 
     static let batteryLeadingInset: CGFloat = 2

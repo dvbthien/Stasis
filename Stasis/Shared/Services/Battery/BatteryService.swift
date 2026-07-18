@@ -24,7 +24,6 @@ class BatteryService {
 
   private var ioKitMonitorTask: Task<Void, Never>?
   private var smcTelemetryTask: Task<Void, Never>?
-  private var smcSingleTelemetryTask: Task<Void, Never>?
 
   private var fallbackMetrics = BatteryMetrics()
   private var fallbackAdapterMetrics = AdapterMetrics()
@@ -131,6 +130,8 @@ class BatteryService {
       batteryPower: metrics.batteryPower,
       batteryTemperature: snapshot.battery.temperature,
       batteryHealth: snapshot.battery.health,
+      maxCapacity: metrics.maxCapacity,
+      designCapacity: metrics.designCapacity,
       cycleCount: snapshot.battery.cycleCount,
       externalConnected: snapshot.adapter.physicallyConnected
     )
@@ -143,7 +144,6 @@ class BatteryService {
     )
     commitMetrics(updatedBattery, adapter: updatedAdapter)
     updateDeviceCapabilities(from: snapshot.capabilities)
-    scheduleDelayedSMCTelemetryRefresh()
   }
 
   private func updateMetricsFromIOKitFallback() {
@@ -158,7 +158,6 @@ class BatteryService {
     updatedAdapter.adapterPower = adapterMetrics.adapterPower
 
     commitMetrics(updatedBattery, adapter: updatedAdapter)
-    scheduleDelayedSMCTelemetryRefresh()
   }
 
   private func commitMetrics(_ updatedBattery: BatteryMetrics, adapter updatedAdapter: AdapterMetrics) {
@@ -213,25 +212,6 @@ class BatteryService {
     smcTelemetryTask = nil
   }
 
-  private func scheduleDelayedSMCTelemetryRefresh() {
-    guard !isStopped, !telemetryRequested else { return }
-    smcSingleTelemetryTask?.cancel()
-    smcSingleTelemetryTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(3))
-      guard
-        !Task.isCancelled,
-        let self,
-        !self.isStopped,
-        !self.telemetryRequested
-      else {
-        return
-      }
-
-      await self.refreshSMCTelemetry()
-      self.smcSingleTelemetryTask = nil
-    }
-  }
-
   private func refreshSMCTelemetry() async {
     do {
       mergeSMCTelemetry(try await smcReader.readAllMetrics())
@@ -274,8 +254,6 @@ class BatteryService {
     logger.info("BatteryService stopping")
     isStopped = true
     telemetryRequested = false
-    smcSingleTelemetryTask?.cancel()
-    smcSingleTelemetryTask = nil
     stopSMCTelemetryPolling()
     smcReader.invalidate()
     stopIOKitMonitoring()

@@ -18,6 +18,11 @@ struct BatteryDisplayInfo {
     let powerSource: PowerSource
     let powerSourceText: String
 
+    /// Power source derived from SMC power flow. Only the Sankey view uses
+    /// this, so it can render the battery-assist (`.both`) case that the
+    /// IOKit-based `powerSource` cannot detect.
+    let sankeyPowerSource: PowerSource
+
     let timeRemainingText: String
 
     let chargingMode: ChargingMode
@@ -39,9 +44,10 @@ struct BatteryDisplayInfo {
         displayPercentage = useHardwarePercentage ? metrics.hardwareBatteryPercentage : metrics.batteryPercentage
         percentageText = "\(displayPercentage)%"
 
-        let displayState = BatteryDisplayState.derive(metrics: metrics, adapter: adapter)
+        let displayState = BatteryDisplayState.derive(metrics: metrics)
         powerSource = displayState.powerSource
         chargingMode = displayState.chargingMode
+        sankeyPowerSource = Self.derivePowerFlowSource(metrics: metrics, adapter: adapter)
 
         switch displayState.powerSource {
         case .battery:
@@ -81,13 +87,25 @@ struct BatteryDisplayInfo {
             "\(metrics.batteryVoltage.formatted(voltageFormat))V @ \(metrics.batteryCurrent.formatted(currentFormat))A"
 
         cycleCountText = "\(metrics.cycleCount)"
-        batteryHealthText = "\(metrics.batteryHealth)%"
+        batteryHealthText = "\(metrics.batteryHealth)% (\(metrics.maxCapacity) / \(metrics.designCapacity) mAh)"
 
         isCharging = metrics.isCharging
         adapterConnected = adapter.adapterConnected
         batteryPower = metrics.batteryPower
         adapterPower = adapter.adapterPower
         systemPower = adapter.adapterPower - metrics.batteryPower
+    }
+
+    private static func derivePowerFlowSource(metrics: BatteryMetrics, adapter: AdapterMetrics) -> PowerSource {
+        guard adapter.adapterConnected else { return .battery }
+
+        if adapter.adapterPower == 0 {
+            return .battery
+        } else if metrics.batteryPower >= 0 {
+            return .acAdapter
+        } else {
+            return .both
+        }
     }
 
     private static func formatTimeRemaining(minutes: Int) -> String {

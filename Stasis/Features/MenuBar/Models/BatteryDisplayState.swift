@@ -4,27 +4,16 @@ struct BatteryDisplayState: Equatable {
     let powerSource: PowerSource
     let chargingMode: ChargingMode
 
-    static func derive(metrics: BatteryMetrics, adapter: AdapterMetrics) -> BatteryDisplayState {
-        let powerSource = derivePowerSource(metrics: metrics, adapter: adapter)
-        let chargingMode: ChargingMode =
-            if powerSource == .acAdapter {
-                metrics.isCharging ? .charging : .pluggedIn
-            } else {
-                .discharging
-            }
-
-        return BatteryDisplayState(powerSource: powerSource, chargingMode: chargingMode)
-    }
-
-    private static func derivePowerSource(metrics: BatteryMetrics, adapter: AdapterMetrics) -> PowerSource {
-        guard adapter.adapterConnected else { return .battery }
-
-        if adapter.adapterPower == 0 {
-            return .battery
-        } else if metrics.batteryPower >= 0 {
-            return .acAdapter
-        } else {
-            return .both
+    /// Derives the display state from IOKit power-source info only
+    /// (ExternalConnected / IsCharging); SMC telemetry is not consulted.
+    static func derive(metrics: BatteryMetrics) -> BatteryDisplayState {
+        guard metrics.externalConnected else {
+            return BatteryDisplayState(powerSource: .battery, chargingMode: .discharging)
         }
+
+        return BatteryDisplayState(
+            powerSource: .acAdapter,
+            chargingMode: metrics.isCharging ? .charging : .pluggedIn
+        )
     }
 }

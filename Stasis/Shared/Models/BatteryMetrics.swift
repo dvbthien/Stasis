@@ -12,6 +12,9 @@ struct BatteryMetrics: Codable, Equatable {
     var batteryTemperature: Double = 0
 
     var batteryHealth: Int = 0
+    var maxCapacity: Int = 0
+    var designCapacity: Int = 0
+    
     var cycleCount: Int = 0
 
     var externalConnected: Bool = false
