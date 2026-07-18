@@ -73,7 +73,7 @@ final class ChargingSettingsModelTests: XCTestCase {
 
         XCTAssertEqual(model.automaticDischarge, .init(isEnabled: true))
         XCTAssertEqual(model.batteryPercentage, .init(useHardwarePercentage: true))
-        XCTAssertNotNil(model.errorMessage)
+        XCTAssertNotNil(model.firstGroupErrorMessage)
     }
 
     func testThresholdCommitSendsOneWrite() async {
@@ -197,7 +197,7 @@ final class ChargingSettingsModelTests: XCTestCase {
     }
 
     private func waitForSaves(_ model: ChargingSettingsModel) async {
-        for _ in 0..<100 where model.isSaving {
+        for _ in 0..<100 where model.isSavingAnyGroup {
             await Task.yield()
         }
     }
@@ -224,6 +224,23 @@ private final class MockChargingSettingsManager: ChargingSettingsManaging {
     var magSafeLEDSettings: MagSafeLEDSettings?
     var batteryPercentageSettings: BatteryPercentageSettings?
     var capabilities: DaemonCapabilities?
+
+    var settingsBundle: DaemonSettingsBundle? {
+        guard
+            let chargingManagementSettings, let chargingThresholdSettings,
+            let automaticDischargeSettings, let sleepPreventionSettings,
+            let heatProtectionSettings, let magSafeLEDSettings, let batteryPercentageSettings
+        else { return nil }
+        return DaemonSettingsBundle(
+            management: chargingManagementSettings,
+            threshold: chargingThresholdSettings,
+            automaticDischarge: automaticDischargeSettings,
+            sleepPrevention: sleepPreventionSettings,
+            heatProtection: heatProtectionSettings,
+            magSafeLED: magSafeLEDSettings,
+            batteryPercentage: batteryPercentageSettings
+        )
+    }
 
     var managementWrites: [ChargingManagementSettings] = []
     var thresholdWrites: [ChargingThresholdSettings] = []

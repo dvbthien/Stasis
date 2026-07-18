@@ -11,13 +11,12 @@ enum ChargingSettingsOperationError: LocalizedError {
 
 @MainActor
 protocol ChargingSettingsManaging: AnyObject {
-  var chargingManagementSettings: ChargingManagementSettings? { get }
-  var chargingThresholdSettings: ChargingThresholdSettings? { get }
-  var automaticDischargeSettings: AutomaticDischargeSettings? { get }
-  var sleepPreventionSettings: SleepPreventionSettings? { get }
-  var heatProtectionSettings: HeatProtectionSettings? { get }
-  var magSafeLEDSettings: MagSafeLEDSettings? { get }
-  var batteryPercentageSettings: BatteryPercentageSettings? { get }
+  /// All settings groups as a single unit, non-nil only once every group has
+  /// loaded. Routing observation through one bundled value (instead of 7
+  /// parallel optionals) means the model only has to track one property, and
+  /// a new group added to `DaemonSettingsBundle` fails to compile here until
+  /// its call sites catch up — turning a silent missed-sync into a build error.
+  var settingsBundle: DaemonSettingsBundle? { get }
   var capabilities: DaemonCapabilities? { get }
 
   func setChargingManagementSettings(_ settings: ChargingManagementSettings) async throws -> ChargingManagementSettings
@@ -78,7 +77,12 @@ final class ChargingSettingsModel {
   var magSafeLED: MagSafeLEDSettings? { magSafeLEDState.settings }
   var batteryPercentage: BatteryPercentageSettings? { batteryPercentageState.settings }
 
-  var isSaving: Bool {
+  /// True if ANY settings group is mid-save. This is a blunt, cross-group
+  /// aggregate — named explicitly so it isn't mistaken for a single group's
+  /// `isSaving` when gating scoped UI (that mistake caused unrelated saves to
+  /// re-render the Manage Charging section). Use a specific group's own
+  /// `XxxState.isSaving` for anything section-scoped.
+  var isSavingAnyGroup: Bool {
     managementState.isSaving
       || thresholdState.isSaving
       || automaticDischargeState.isSaving
@@ -88,7 +92,11 @@ final class ChargingSettingsModel {
       || batteryPercentageState.isSaving
   }
 
-  var errorMessage: String? {
+  /// The first error found across all groups, if any. A blunt, cross-group
+  /// aggregate for tests/diagnostics that only need to know "did something
+  /// fail" — use a specific group's own `XxxState.errorMessage` for anything
+  /// section-scoped.
+  var firstGroupErrorMessage: String? {
     managementState.errorMessage
       ?? thresholdState.errorMessage
       ?? automaticDischargeState.errorMessage
@@ -102,36 +110,37 @@ final class ChargingSettingsModel {
 
   init(client: any ChargingSettingsManaging = ChargingDaemonManager.shared) {
     self.client = client
+    let bundle = client.settingsBundle
     managementState = .init(
-      initialSettings: client.chargingManagementSettings,
+      initialSettings: bundle?.management,
       saveOperation: { try await client.setChargingManagementSettings($0) }
     )
     thresholdState = .init(
-      initialSettings: client.chargingThresholdSettings,
+      initialSettings: bundle?.threshold,
       saveOperation: { try await client.setChargingThresholdSettings($0) }
     )
     automaticDischargeState = .init(
-      initialSettings: client.automaticDischargeSettings,
+      initialSettings: bundle?.automaticDischarge,
       saveOperation: { try await client.setAutomaticDischargeSettings($0) }
     )
     sleepPreventionState = .init(
-      initialSettings: client.sleepPreventionSettings,
+      initialSettings: bundle?.sleepPrevention,
       saveOperation: { try await client.setSleepPreventionSettings($0) }
     )
     heatProtectionState = .init(
-      initialSettings: client.heatProtectionSettings,
+      initialSettings: bundle?.heatProtection,
       saveOperation: { try await client.setHeatProtectionSettings($0) }
     )
     magSafeLEDState = .init(
-      initialSettings: client.magSafeLEDSettings,
+      initialSettings: bundle?.magSafeLED,
       saveOperation: { try await client.setMagSafeLEDSettings($0) }
     )
     batteryPercentageState = .init(
-      initialSettings: client.batteryPercentageSettings,
+      initialSettings: bundle?.batteryPercentage,
       saveOperation: { try await client.setBatteryPercentageSettings($0) }
     )
     capabilities = client.capabilities
-    isLoaded = Self.hasLoadedAllSettings(from: client)
+    isLoaded = bundle != nil
     observeManagerStateChanges()
   }
 
@@ -156,7 +165,7 @@ final class ChargingSettingsModel {
   }
 
   func disableManagementForDaemonUninstall() async throws {
-    guard !isSaving else { throw ChargingSettingsOperationError.saveInProgress }
+    guard !isSavingAnyGroup else { throw ChargingSettingsOperationError.saveInProgress }
     guard management?.isEnabled == true else { return }
     try await managementState.setAndWait(.init(isEnabled: false))
   }
@@ -175,13 +184,7 @@ final class ChargingSettingsModel {
   private func observeManagerStateChanges() {
     guard !isStopped else { return }
     withObservationTracking {
-      _ = client.chargingManagementSettings
-      _ = client.chargingThresholdSettings
-      _ = client.automaticDischargeSettings
-      _ = client.sleepPreventionSettings
-      _ = client.heatProtectionSettings
-      _ = client.magSafeLEDSettings
-      _ = client.batteryPercentageSettings
+      _ = client.settingsBundle
       _ = client.capabilities
     } onChange: { [weak self] in
       Task { @MainActor in
@@ -196,29 +199,18 @@ final class ChargingSettingsModel {
     if capabilities != client.capabilities {
       capabilities = client.capabilities
     }
-    managementState.synchronize(client.chargingManagementSettings)
-    thresholdState.synchronize(client.chargingThresholdSettings)
-    automaticDischargeState.synchronize(client.automaticDischargeSettings)
-    sleepPreventionState.synchronize(client.sleepPreventionSettings)
-    heatProtectionState.synchronize(client.heatProtectionSettings)
-    magSafeLEDState.synchronize(client.magSafeLEDSettings)
-    batteryPercentageState.synchronize(client.batteryPercentageSettings)
-    let managerIsLoaded = Self.hasLoadedAllSettings(from: client)
+    let bundle = client.settingsBundle
+    managementState.synchronize(bundle?.management)
+    thresholdState.synchronize(bundle?.threshold)
+    automaticDischargeState.synchronize(bundle?.automaticDischarge)
+    sleepPreventionState.synchronize(bundle?.sleepPrevention)
+    heatProtectionState.synchronize(bundle?.heatProtection)
+    magSafeLEDState.synchronize(bundle?.magSafeLED)
+    batteryPercentageState.synchronize(bundle?.batteryPercentage)
+    let managerIsLoaded = bundle != nil
     if isLoaded != managerIsLoaded {
       isLoaded = managerIsLoaded
     }
-  }
-
-  private static func hasLoadedAllSettings(
-    from client: any ChargingSettingsManaging
-  ) -> Bool {
-    client.chargingManagementSettings != nil
-      && client.chargingThresholdSettings != nil
-      && client.automaticDischargeSettings != nil
-      && client.sleepPreventionSettings != nil
-      && client.heatProtectionSettings != nil
-      && client.magSafeLEDSettings != nil
-      && client.batteryPercentageSettings != nil
   }
 }
 
@@ -233,6 +225,23 @@ private final class ChargingSettingsPreviewClient: ChargingSettingsManaging {
   var magSafeLEDSettings: MagSafeLEDSettings? = .init()
   var batteryPercentageSettings: BatteryPercentageSettings? = .init()
   var capabilities: DaemonCapabilities?
+
+  var settingsBundle: DaemonSettingsBundle? {
+    guard
+      let chargingManagementSettings, let chargingThresholdSettings,
+      let automaticDischargeSettings, let sleepPreventionSettings,
+      let heatProtectionSettings, let magSafeLEDSettings, let batteryPercentageSettings
+    else { return nil }
+    return DaemonSettingsBundle(
+      management: chargingManagementSettings,
+      threshold: chargingThresholdSettings,
+      automaticDischarge: automaticDischargeSettings,
+      sleepPrevention: sleepPreventionSettings,
+      heatProtection: heatProtectionSettings,
+      magSafeLED: magSafeLEDSettings,
+      batteryPercentage: batteryPercentageSettings
+    )
+  }
 
   init(managementEnabled: Bool) {
     chargingManagementSettings = .init(isEnabled: managementEnabled)

@@ -48,6 +48,7 @@ class ChargingDaemonManager {
   var batteryPercentageSettings: BatteryPercentageSettings? { stateSync.batteryPercentageSettings }
   var capabilities: DaemonCapabilities? { stateSync.capabilities }
   var daemonSnapshot: DaemonSnapshot? { stateSync.daemonSnapshot }
+  var settingsBundle: DaemonSettingsBundle? { stateSync.settingsBundle }
 
   /// True when the connected daemon was spawned from a different binary than
   /// the one bundled with this app, meaning launchd is still running an older

@@ -17,14 +17,26 @@ final class ChargingDaemonStateSync {
   private(set) var capabilities: DaemonCapabilities?
   private(set) var daemonSnapshot: DaemonSnapshot?
 
-  var hasLoadedAllSettings: Bool {
-    chargingManagementSettings != nil
-      && chargingThresholdSettings != nil
-      && automaticDischargeSettings != nil
-      && sleepPreventionSettings != nil
-      && heatProtectionSettings != nil
-      && magSafeLEDSettings != nil
-      && batteryPercentageSettings != nil
+  /// All settings groups as a single unit, non-nil only once every group has
+  /// loaded. The only place that hand-lists all 7 fields; adding a new field
+  /// to `DaemonSettingsBundle` makes this initializer call fail to compile
+  /// until updated, so a forgotten new group is a build error here rather
+  /// than a silent gap further up in `ChargingSettingsModel`'s observation.
+  var settingsBundle: DaemonSettingsBundle? {
+    guard
+      let chargingManagementSettings, let chargingThresholdSettings,
+      let automaticDischargeSettings, let sleepPreventionSettings,
+      let heatProtectionSettings, let magSafeLEDSettings, let batteryPercentageSettings
+    else { return nil }
+    return DaemonSettingsBundle(
+      management: chargingManagementSettings,
+      threshold: chargingThresholdSettings,
+      automaticDischarge: automaticDischargeSettings,
+      sleepPrevention: sleepPreventionSettings,
+      heatProtection: heatProtectionSettings,
+      magSafeLED: magSafeLEDSettings,
+      batteryPercentage: batteryPercentageSettings
+    )
   }
 
   /// Drops the cached settings for a new connection. The last snapshot is
