@@ -3,23 +3,16 @@ import SwiftUI
 struct SettingsView: View {
   @State private var selectedTab: SettingsTab = .general
   @State private var chargingSettingsModel: ChargingSettingsModel
-  private var sidebarState: SettingsSidebarState
 
   private let capabilities: DeviceCapabilities
   private let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
-  init(capabilities: DeviceCapabilities, sidebarState: SettingsSidebarState) {
+  init(capabilities: DeviceCapabilities) {
     self.capabilities = capabilities
-    self.sidebarState = sidebarState
     _chargingSettingsModel = State(initialValue: ChargingSettingsModel())
   }
 
   var body: some View {
-    NavigationSplitView(
-      columnVisibility: Binding(
-        get: { sidebarState.columnVisibility },
-        set: { sidebarState.columnVisibility = $0 }
-      )
-    ) {
+    NavigationSplitView() {
       List(SettingsTab.allCases, selection: $selectedTab) { tab in
         SettingsSidebarRow(tab: tab, isSelected: selectedTab == tab)
           .tag(tab)
@@ -41,6 +34,7 @@ struct SettingsView: View {
       .listStyle(.sidebar)
       .padding(.top, SettingsLayout.sidebarTopPadding)
       .tint(.gray)
+      .modifier(HideWindowTitle())
     } detail: {
       Group {
         switch selectedTab {
@@ -59,8 +53,26 @@ struct SettingsView: View {
           )
         }
       }
+      .modifier(HideWindowTitle())
     }
+    .modifier(HideWindowTitle())
     .frame(minWidth: 760, minHeight: 560)
+  }
+}
+
+/// Keeps SwiftUI from re-asserting "Stasis Settings" into the window title on
+/// tab switches or sidebar collapse — unlike the didUpdate observer in
+/// SettingsSceneController, which only clears it a frame later and flickers.
+/// On macOS 15+ the title toolbar item is removed outright; on macOS 14 an
+/// empty title is set instead (`Text(verbatim:)` so no "" key leaks into the
+/// localization catalog).
+private struct HideWindowTitle: ViewModifier {
+  func body(content: Content) -> some View {
+    if #available(macOS 15.0, *) {
+      content.toolbar(removing: .title)
+    } else {
+      content.navigationTitle(Text(verbatim: ""))
+    }
   }
 }
 
@@ -71,7 +83,6 @@ struct SettingsView: View {
       adapterControl: true,
       hasMagSafe: true,
       magsafeLEDControl: true
-    ),
-    sidebarState: SettingsSidebarState()
+    )
   )
 }

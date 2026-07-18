@@ -10,7 +10,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lowPowerModeMonitor: LowPowerModeMonitor!
     private var uptimeClock: UptimeClock!
     private var menuBuilder: MenuBuilder!
-    private var settingsWindowController: SettingsWindowController!
     private var menu: NSMenu!
     private var settingsObservation: Task<Void, Never>?
     private var adapterObservation: Task<Void, Never>?
@@ -41,12 +40,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         await batteryService.loadCapabilities()
         lowPowerModeMonitor = LowPowerModeMonitor()
         uptimeClock = UptimeClock()
-        settingsWindowController = SettingsWindowController(
-            capabilities: batteryService.deviceCapabilities)
+        // The Settings scene observes deviceCapabilities on the service
+        // directly, so daemon updates flow to it without a mirror copy.
+        SettingsSceneController.shared.batteryService = batteryService
         menuBuilder = MenuBuilder(
             batteryService: batteryService,
-            uptimeClock: uptimeClock,
-            settingsWindowController: settingsWindowController
+            uptimeClock: uptimeClock
         )
         statusBarManager = StatusBarManager(
             batteryService: batteryService,
@@ -81,23 +80,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             while !Task.isCancelled {
                 guard let self else { return }
                 self.rebuildMenu()
-                await withCheckedContinuation { continuation in
-                    withObservationTracking {
-                        // `controlState` only changes on percentage/temperature/
-                        // adapter-connection transitions — unlike `adapterMetrics`,
-                        // it doesn't carry the jittery SMC voltage/current
-                        // readings, so this doesn't rebuild the whole menu on
-                        // every fast-poll tick.
-                        _ = self.batteryService.controlState.adapterConnected
-                        _ = ChargingDaemonManager.shared.chargingManagementSettings
-                    } onChange: {
-                        Task { @MainActor in
-                            continuation.resume()
-                        }
-                    }
+                await self.nextChange {
+                    // `controlState` only changes on percentage/temperature/
+                    // adapter-connection transitions — unlike `adapterMetrics`,
+                    // it doesn't carry the jittery SMC voltage/current
+                    // readings, so this doesn't rebuild the whole menu on
+                    // every fast-poll tick.
+                    _ = self.batteryService.controlState.adapterConnected
+                    _ = ChargingDaemonManager.shared.chargingManagementSettings
                 }
             }
         }
+    }
+
+    /// Suspends until a value read inside `tracking` changes. An AsyncStream
+    /// ends its iteration when the awaiting task is cancelled, so — unlike
+    /// parking on a bare `withCheckedContinuation` — cancelling the
+    /// observation task while it waits here doesn't leak a continuation.
+    private func nextChange(in tracking: @escaping () -> Void) async {
+        let changes = AsyncStream<Void> { continuation in
+            withObservationTracking(tracking) {
+                continuation.finish()
+            }
+        }
+        for await _ in changes {}
     }
 
     private func rebuildMenu() {
@@ -114,21 +120,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         chargingNotificationObservation = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                await withCheckedContinuation { continuation in
-                    withObservationTracking {
-                        if let snapshot = ChargingDaemonManager.shared.daemonSnapshot {
-                            self.chargingStateNotifier.process(snapshot: snapshot)
-                        }
-                    } onChange: {
-                        Task { @MainActor in continuation.resume() }
+                await self.nextChange {
+                    if let snapshot = ChargingDaemonManager.shared.daemonSnapshot {
+                        self.chargingStateNotifier.process(snapshot: snapshot)
                     }
                 }
             }
         }
     }
 
+    // Keep the menu-bar app alive when the Settings window (the only
+    // window scene) closes — SwiftUI's default is to quit the app.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        settingsWindowController.cancelPendingRestart()
+        SettingsSceneController.shared.cancelPendingRestart()
         settingsObservation?.cancel()
         settingsObservation = nil
         adapterObservation?.cancel()

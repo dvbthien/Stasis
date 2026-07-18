@@ -16,16 +16,13 @@ class MenuBuilder {
     private let batteryService: BatteryService
     private let chargingControls = ChargingTemporaryControlsModel()
     private let uptimeClock: UptimeClock
-    private let settingsWindowController: SettingsWindowController
 
     init(
         batteryService: BatteryService,
-        uptimeClock: UptimeClock,
-        settingsWindowController: SettingsWindowController
+        uptimeClock: UptimeClock
     ) {
         self.batteryService = batteryService
         self.uptimeClock = uptimeClock
-        self.settingsWindowController = settingsWindowController
     }
 
     func buildMenu() -> NSMenu {
@@ -190,7 +187,7 @@ class MenuBuilder {
     }
 
     @objc private func handleSettings() {
-        settingsWindowController.showSettings()
+        SettingsSceneController.shared.open()
     }
 
     @objc private func handleQuit() {

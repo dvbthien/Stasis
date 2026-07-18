@@ -39,7 +39,7 @@ struct BatteryRenderer {
       if ctx.shouldShowOutsidePercentage {
         ctx.outsideText.draw(
           at: ctx.outsideTextPoint(in: rect),
-          withAttributes: ctx.outsideAttributes
+          withAttributes: RenderContext.outsideAttributes
         )
       }
 
@@ -137,6 +137,25 @@ extension BatteryRenderer {
     let isLowPower: Bool
     let displayLocation: PercentageDisplayLocation
     let showState: Bool
+    /// Measured once; reused by layout, sizing, and positioning.
+    let outsideTextSize: NSSize
+
+    init(
+      level: Int,
+      chargingMode: ChargingMode,
+      isLowPower: Bool,
+      displayLocation: PercentageDisplayLocation,
+      showState: Bool
+    ) {
+      self.level = level
+      self.chargingMode = chargingMode
+      self.isLowPower = isLowPower
+      self.displayLocation = displayLocation
+      self.showState = showState
+      self.outsideTextSize = "\(level)%".size(
+        withAttributes: Self.outsideAttributes
+      )
+    }
 
     // State flags.
     var isInsideMode: Bool { displayLocation == .insideIcon }
@@ -144,9 +163,11 @@ extension BatteryRenderer {
     var isCritical: Bool {
       showState && level <= Layout.criticalBatteryLevel
     }
-    var usesPassthroughKnockout: Bool {
-      !isCritical && !isLowPower && chargingMode != .charging
+    /// True when the fill uses a state color instead of the icon tone.
+    var hasStateColor: Bool {
+      isCritical || isLowPower || chargingMode == .charging
     }
+    var usesPassthroughKnockout: Bool { !hasStateColor }
 
     // Mode-specific dimensions.
     var bodyWidth: CGFloat {
@@ -161,15 +182,10 @@ extension BatteryRenderer {
 
     // Percentage text styling.
     var outsideText: String { "\(level)%" }
-    var outsideAttributes: [NSAttributedString.Key: Any] {
-      [
-        .font: NSFont.systemFont(ofSize: Layout.outsideTextSize),
-        .foregroundColor: Layout.foregroundColor,
-      ]
-    }
-    var outsideTextSize: NSSize {
-      outsideText.size(withAttributes: outsideAttributes)
-    }
+    static let outsideAttributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: Layout.outsideTextSize),
+      .foregroundColor: Layout.foregroundColor,
+    ]
 
     // Battery body origin.
     var batteryXOffset: CGFloat {
@@ -200,7 +216,7 @@ extension BatteryRenderer {
 
     // Render cache key.
     var stateKey: String {
-      "\(level)_\(chargingMode)_\(isLowPower)_\(displayLocation)_\(showState)_\(NSApp.effectiveAppearance.name)"
+      "\(level)_\(chargingMode)_\(isLowPower)_\(displayLocation)_\(showState)_\(NSApp.effectiveAppearance.name)_\(Layout.canvasHeight)"
     }
 
     // Outside text origin.
@@ -237,18 +253,13 @@ extension BatteryRenderer {
     if let plan {
       // Draw the track only in the unfilled region.
       if plan.fillWidth < bodyRect.width {
-        NSGraphicsContext.current?.saveGraphicsState()
-        NSBezierPath(
-          rect: NSRect(
-            x: bodyRect.minX + plan.fillWidth,
-            y: bodyRect.minY,
-            width: bodyRect.width - plan.fillWidth,
-            height: bodyRect.height
-          )
-        ).addClip()
-        Layout.insideTrackColor.setFill()
-        insideBodyPath(bodyRect, context: context).fill()
-        NSGraphicsContext.current?.restoreGraphicsState()
+        fillInsideBody(
+          bodyRect,
+          fromX: bodyRect.minX + plan.fillWidth,
+          toX: bodyRect.maxX,
+          color: Layout.insideTrackColor,
+          context: context
+        )
       }
     } else {
       Layout.foregroundColor.withAlphaComponent(
@@ -289,21 +300,13 @@ extension BatteryRenderer {
   ) {
     if let plan {
       if plan.fillWidth > 0 {
-        NSGraphicsContext.current?.saveGraphicsState()
-        // Clip the level edge; the body path preserves rounded corners.
-        if plan.fillWidth < bodyRect.width {
-          NSBezierPath(
-            rect: NSRect(
-              x: bodyRect.minX,
-              y: bodyRect.minY,
-              width: plan.fillWidth,
-              height: bodyRect.height
-            )
-          ).addClip()
-        }
-        context.fillColor.setFill()
-        insideBodyPath(bodyRect, context: context).fill()
-        NSGraphicsContext.current?.restoreGraphicsState()
+        fillInsideBody(
+          bodyRect,
+          fromX: bodyRect.minX,
+          toX: bodyRect.minX + plan.fillWidth,
+          color: context.fillColor,
+          context: context
+        )
       }
     } else {
       let fillWidth = max(
@@ -313,17 +316,44 @@ extension BatteryRenderer {
       )
       if fillWidth > 0 {
         // Inset the fill evenly.
-        fillRect(
-          NSRect(
+        context.fillColor.setFill()
+        NSBezierPath(
+          roundedRect: NSRect(
             x: context.batteryXOffset + Layout.outsideFillInset,
             y: bodyRect.minY + Layout.outsideFillInset,
             width: fillWidth,
             height: context.bodyHeight - Layout.outsideFillInset * 2
           ),
-          with: context.fillColor
-        )
+          xRadius: Layout.outsideFillCornerRadius,
+          yRadius: Layout.outsideFillCornerRadius
+        ).fill()
       }
     }
+  }
+
+  /// Fills the body path clipped to a horizontal band; the body path
+  /// preserves rounded corners at either end.
+  private static func fillInsideBody(
+    _ bodyRect: NSRect,
+    fromX minX: CGFloat,
+    toX maxX: CGFloat,
+    color: NSColor,
+    context: RenderContext
+  ) {
+    NSGraphicsContext.current?.saveGraphicsState()
+    if minX > bodyRect.minX || maxX < bodyRect.maxX {
+      NSBezierPath(
+        rect: NSRect(
+          x: minX,
+          y: bodyRect.minY,
+          width: maxX - minX,
+          height: bodyRect.height
+        )
+      ).addClip()
+    }
+    color.setFill()
+    insideBodyPath(bodyRect, context: context).fill()
+    NSGraphicsContext.current?.restoreGraphicsState()
   }
 
   private static let batteryTextAttributes: [NSAttributedString.Key: Any] = [
@@ -402,6 +432,18 @@ extension BatteryRenderer {
     return configured
   }
 
+  /// Horizontal ink extent measured with device metrics.
+  private static func inkBounds(of text: String) -> NSRect {
+    text.boundingRect(
+      with: NSSize(
+        width: CGFloat.greatestFiniteMagnitude,
+        height: CGFloat.greatestFiniteMagnitude
+      ),
+      options: [.usesDeviceMetrics],
+      attributes: batteryTextAttributes
+    )
+  }
+
   private static func insideForegroundLayout(
     in bodyRect: NSRect,
     context: RenderContext
@@ -410,14 +452,7 @@ extension BatteryRenderer {
     let percentageSize = percentageText.size(
       withAttributes: batteryTextAttributes
     )
-    let percentageInkBounds = percentageText.boundingRect(
-      with: NSSize(
-        width: CGFloat.greatestFiniteMagnitude,
-        height: CGFloat.greatestFiniteMagnitude
-      ),
-      options: [.usesDeviceMetrics],
-      attributes: batteryTextAttributes
-    )
+    let percentageInkBounds = inkBounds(of: percentageText)
     let symbolImage = stateSymbol(
       for: context.chargingMode,
       pointSize: Layout.insideSymbolSize
@@ -447,14 +482,7 @@ extension BatteryRenderer {
       let characterAdvance = characterText.size(
         withAttributes: batteryTextAttributes
       ).width
-      let characterInkBounds = characterText.boundingRect(
-        with: NSSize(
-          width: CGFloat.greatestFiniteMagnitude,
-          height: CGFloat.greatestFiniteMagnitude
-        ),
-        options: [.usesDeviceMetrics],
-        attributes: batteryTextAttributes
-      )
+      let characterInkBounds = inkBounds(of: characterText)
       let paddedMinX = characterOriginX + characterInkBounds.minX
         - Layout.glyphAntialiasPadding
       let paddedMaxX = characterOriginX + characterInkBounds.maxX
@@ -551,7 +579,6 @@ extension BatteryRenderer {
     plan: InsidePlan?,
     context: RenderContext
   ) {
-    let isDischarging = context.chargingMode == .discharging
     if let plan {
       let layout = plan.layout
 
@@ -572,7 +599,8 @@ extension BatteryRenderer {
         drawInsideForeground(layout, symbolOperation: .sourceOver)
       }
 
-    } else if !isDischarging {
+    } else {
+      // stateSymbol returns nil while discharging (no symbol name).
       guard let symbol = stateSymbol(
         for: context.chargingMode,
         pointSize: Layout.outsideSymbolSize
@@ -651,14 +679,6 @@ extension BatteryRenderer {
     }
   }
 
-  private static func fillRect(_ rect: NSRect, with color: NSColor) {
-    color.setFill()
-    NSBezierPath(
-      roundedRect: rect,
-      xRadius: Layout.outsideFillCornerRadius,
-      yRadius: Layout.outsideFillCornerRadius
-    ).fill()
-  }
 }
 
 #Preview {
@@ -739,57 +759,30 @@ extension BatteryRenderer {
       Text("Chữ đục lỗ bên trong (.insideIcon)")
         .font(.headline).foregroundStyle(.secondary)
 
-      HStack(spacing: 20) {
-        ForEach([100, 75, 60, 60, 61, 40, 25, 15], id: \.self) {
-          level in
-          if let insideImg = BatteryRenderer.render(
-            level: level,
-            chargingMode: .discharging,
-            isLowPower: (level == 75),
-            displayLocation: .insideIcon,
-            showState: true
-          ) {
-            VStack {
-              Image(nsImage: insideImg)
-              Text("\(level)%").font(.caption)
+      ForEach(
+        [ChargingMode.discharging, .charging, .pluggedIn],
+        id: \.self
+      ) { mode in
+        HStack(spacing: 20) {
+          ForEach(
+            Array([100, 75, 60, 60, 61, 40, 25, 15].enumerated()),
+            id: \.offset
+          ) { _, level in
+            if let insideImg = BatteryRenderer.render(
+              level: level,
+              chargingMode: mode,
+              isLowPower: mode == .discharging && level == 75,
+              displayLocation: .insideIcon,
+              showState: true
+            ) {
+              VStack {
+                Image(nsImage: insideImg)
+                Text("\(level)%").font(.caption)
+              }
             }
           }
         }
       }
-        HStack(spacing: 20) {
-          ForEach([100, 75, 60, 60, 61, 40, 25, 15], id: \.self) {
-            level in
-            if let insideImg = BatteryRenderer.render(
-              level: level,
-              chargingMode: .charging,
-              isLowPower: false,
-              displayLocation: .insideIcon,
-              showState: true
-            ) {
-              VStack {
-                Image(nsImage: insideImg)
-                Text("\(level)%").font(.caption)
-              }
-            }
-          }
-        }
-        HStack(spacing: 20) {
-          ForEach([100, 75, 60, 60, 61, 40, 25, 15], id: \.self) {
-            level in
-            if let insideImg = BatteryRenderer.render(
-              level: level,
-              chargingMode: .pluggedIn,
-              isLowPower: false,
-              displayLocation: .insideIcon,
-              showState: true
-            ) {
-              VStack {
-                Image(nsImage: insideImg)
-                Text("\(level)%").font(.caption)
-              }
-            }
-          }
-        }
     }
 
     Divider()

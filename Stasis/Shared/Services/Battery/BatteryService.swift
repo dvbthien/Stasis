@@ -13,6 +13,11 @@ class BatteryService {
   private(set) var controlState = BatteryControlState()
   private(set) var deviceCapabilities = DeviceCapabilities.unknown
 
+  /// True once `deviceCapabilities` reflects a real daemon snapshot. An
+  /// all-false value can be legitimate on unsupported hardware, so waiting
+  /// UIs must gate on this flag instead of comparing against `.unknown`.
+  private(set) var capabilitiesLoaded = false
+
   private let ioKitService = IOKitService()
   private let daemonManager = ChargingDaemonManager.shared
   private let smcReader = StasisHelperClient.shared
@@ -167,6 +172,7 @@ class BatteryService {
   }
 
   private func updateDeviceCapabilities(from capabilities: DaemonCapabilities) {
+    capabilitiesLoaded = true
     deviceCapabilities = DeviceCapabilities(
       chargingControl: capabilities.chargingControl,
       adapterControl: capabilities.adapterControl,
