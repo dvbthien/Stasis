@@ -30,9 +30,9 @@ struct SettingsView: View {
           }
         }
       )
-      .navigationSplitViewColumnWidth(190)
       .listStyle(.sidebar)
       .padding(.top, SettingsLayout.sidebarTopPadding)
+      .frame(minWidth: 190, minHeight: 560)
       .tint(.gray)
       .modifier(HideWindowTitle())
     } detail: {
@@ -54,9 +54,10 @@ struct SettingsView: View {
         }
       }
       .modifier(HideWindowTitle())
+      .frame(minWidth: 570, minHeight: 560)
     }
+    .navigationSplitViewStyle(.balanced)
     .modifier(HideWindowTitle())
-    .frame(minWidth: 760, minHeight: 560)
   }
 }
 

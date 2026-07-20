@@ -12,6 +12,12 @@ struct StasisApp: App {
         // the Settings scene ignores `.windowStyle(.hiddenTitleBar)`.
         Settings {
             SettingsRootView()
+                .frame(
+                    minWidth: 760,
+                    idealWidth: 900,
+                    minHeight: 560,
+                    idealHeight: 620
+                )
         }
     }
 }

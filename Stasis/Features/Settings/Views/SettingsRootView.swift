@@ -21,7 +21,6 @@ struct SettingsRootView: View {
         SettingsView(capabilities: batteryService.deviceCapabilities)
       } else {
         ProgressView()
-          .frame(minWidth: 760, minHeight: 560)
           .task {
             try? await Task.sleep(for: .seconds(2))
             capabilitiesWaitTimedOut = true
@@ -30,8 +29,9 @@ struct SettingsRootView: View {
     }
     .background(SettingsWindowAdopter())
     .onAppear {
-      // Covers open paths that bypass SettingsSceneController.open(),
-      // such as the standard ⌘, shortcut.
+      // Every open path (SettingsLink, ⌘,, reopening a still-live window)
+      // routes through here, so this is also where a restart scheduled by
+      // a previous close gets cancelled.
       NSApp.setActivationPolicy(.regular)
       NSApp.activate(ignoringOtherApps: true)
     }
