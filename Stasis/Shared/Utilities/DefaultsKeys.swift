@@ -38,4 +38,7 @@ extension Defaults.Keys {
 
     // Advanced
     static let restartOnClose = Key<Bool>("restartOnClose", default: false)
+
+    // Onboarding
+    static let hasCompletedOnboarding = Key<Bool>("hasCompletedOnboarding", default: false)
 }

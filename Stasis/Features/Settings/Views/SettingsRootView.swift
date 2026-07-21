@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 /// Root of the `Settings` scene. Waits for device capabilities (loaded
@@ -13,12 +14,26 @@ struct SettingsRootView: View {
     /// with whatever capabilities are available.
     @State private var capabilitiesWaitTimedOut = false
 
+    /// Whether the first-run onboarding card is showing. Decoupled from why
+    /// the Settings window itself opened — the window may open for other
+    /// reasons (⌘,, menu click) and onboarding still decides on its own,
+    /// once, whether to show.
+    @State private var showOnboarding = false
+
     var body: some View {
         Group {
             if let batteryService = controller.batteryService,
                 batteryService.capabilitiesLoaded || capabilitiesWaitTimedOut
             {
-                SettingsView(capabilities: batteryService.deviceCapabilities)
+                OnboardingContainer(showOnboarding: $showOnboarding) {
+                    SettingsView(capabilities: batteryService.deviceCapabilities)
+                }
+                .task {
+                    guard !Defaults[.hasCompletedOnboarding] else { return }
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeInOut(duration: 0.3)) { showOnboarding = true }
+                }
             } else {
                 ProgressView()
                     .task {

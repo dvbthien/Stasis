@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
+    "%lld" : {
+
+    },
     "%lld%%" : {
       "shouldTranslate" : false
     },
@@ -220,6 +226,9 @@
           }
         }
       }
+    },
+    "Back" : {
+
     },
     "Battery" : {
       "localizations" : {
@@ -924,6 +933,9 @@
     "Connection Issue" : {
 
     },
+    "Continue" : {
+
+    },
     "Control how Stasis starts, appears in the menu bar, and sends notifications." : {
 
     },
@@ -1370,6 +1382,9 @@
         }
       }
     },
+    "Get Started" : {
+
+    },
     "Green" : {
       "localizations" : {
         "de" : {
@@ -1598,6 +1613,9 @@
           }
         }
       }
+    },
+    "Let's set up Stasis" : {
+
     },
     "Limit the maximum charge level to extend battery lifespan." : {
       "localizations" : {
@@ -2376,6 +2394,9 @@
         }
       }
     },
+    "Skip" : {
+
+    },
     "Sleep Prevention" : {
       "localizations" : {
         "vi" : {
@@ -2436,6 +2457,9 @@
 
     },
     "Stasis can still monitor battery status, but this hardware does not expose charging or adapter controls." : {
+
+    },
+    "Stasis is ready" : {
 
     },
     "Status" : {
@@ -2565,6 +2589,9 @@
 
     },
     "This Mac's firmware enforces the charge limit itself, so Stasis does not manage charging and cannot decide what the MagSafe LED should show." : {
+
+    },
+    "This takes under a minute — Stasis manages your Mac's charging and can run quietly in the background from login." : {
 
     },
     "Threshold below limit" : {
@@ -2697,6 +2724,12 @@
 
     },
     "Version: %@" : {
+
+    },
+    "Welcome to Stasis" : {
+
+    },
+    "You can fine-tune everything else in Settings at any time." : {
 
     }
   },

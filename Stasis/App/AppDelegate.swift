@@ -40,6 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // The Settings scene observes deviceCapabilities on the service
         // directly, so daemon updates flow to it without a mirror copy.
         SettingsSceneController.shared.batteryService = batteryService
+        if !Defaults[.hasCompletedOnboarding] {
+            SettingsSceneController.shared.open()
+        }
         menuBuilder = MenuBuilder(
             batteryService: batteryService,
             uptimeClock: uptimeClock
