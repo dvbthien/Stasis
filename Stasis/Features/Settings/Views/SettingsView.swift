@@ -3,7 +3,6 @@ import SwiftUI
 struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .general
     @State private var chargingSettingsModel: ChargingSettingsModel
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     private let capabilities: DeviceCapabilities
     private let version =
@@ -34,8 +33,8 @@ struct SettingsView: View {
                 }
             )
             .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(210)
             .padding(.top, SettingsLayout.sidebarTopPadding)
-            .frame(minWidth: 190, minHeight: 560)
             .tint(.gray)
         } detail: {
             Group {
@@ -56,7 +55,6 @@ struct SettingsView: View {
                     )
                 }
             }
-            .frame(minWidth: 570, minHeight: 560)
         }
         .navigationSplitViewStyle(.balanced)
     }

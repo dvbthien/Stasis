@@ -14,9 +14,7 @@ struct StasisApp: App {
             SettingsRootView()
                 .frame(
                     minWidth: 760,
-                    idealWidth: 900,
-                    minHeight: 560,
-                    idealHeight: 620
+                    minHeight: 580,
                 )
         }
     }
