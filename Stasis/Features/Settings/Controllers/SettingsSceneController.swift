@@ -150,7 +150,7 @@ final class SettingsSceneController {
     // Defer restart briefly so normal app termination can cancel it first.
     private func scheduleRestart() {
         pendingRestart = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(100))
+            try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
 
             // Re-confirm the window is actually still closed — it may have
