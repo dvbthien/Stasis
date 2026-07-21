@@ -40,19 +40,22 @@ final class SettingsSceneController {
             // The Settings scene re-asserts its "<App> Settings" title on
             // toolbar/layout updates (e.g. collapsing the sidebar), so
             // re-hide it whenever the window updates with a visible title.
-            NotificationCenter.default.addObserver(
-                forName: NSWindow.didUpdateNotification,
-                object: window,
-                queue: .main
-            ) { [weak self, weak window] _ in
-                MainActor.assumeIsolated {
-                    guard let self, let window,
-                        self.settingsWindow === window,
-                        window.titleVisibility != .hidden || !window.title.isEmpty
-                    else { return }
-                    self.applyChrome(to: window)
-                }
-            },
+            
+            // Legacy code doesn't delete
+//            NotificationCenter.default.addObserver(
+//                forName: NSWindow.didUpdateNotification,
+//                object: window,
+//                queue: .main
+//            ) { [weak self, weak window] _ in
+//                MainActor.assumeIsolated {
+//                    guard let self, let window,
+//                        self.settingsWindow === window,
+//                        window.titleVisibility != .hidden
+//                            || !window.title.isEmpty
+//                    else { return }
+//                    self.applyChrome(to: window)
+//                }
+//            },
         ]
     }
 
@@ -69,7 +72,9 @@ final class SettingsSceneController {
         NSApp.setActivationPolicy(.regular)
 
         // isVisible is false while miniaturized, so check both.
-        if let settingsWindow, settingsWindow.isVisible || settingsWindow.isMiniaturized {
+        if let settingsWindow,
+            settingsWindow.isVisible || settingsWindow.isMiniaturized
+        {
             if settingsWindow.isMiniaturized {
                 settingsWindow.deminiaturize(nil)
             }
@@ -92,7 +97,8 @@ final class SettingsSceneController {
         guard
             let appMenu = NSApp.mainMenu?.items.first?.submenu,
             let item = appMenu.items.first(where: {
-                $0.keyEquivalent == "," && $0.keyEquivalentModifierMask == .command
+                $0.keyEquivalent == ","
+                    && $0.keyEquivalentModifierMask == .command
             }),
             let action = item.action
         else { return false }
@@ -107,6 +113,13 @@ final class SettingsSceneController {
         window.isRestorable = false
         applyChrome(to: window)
         observe(window)
+
+        // The scene may finish creating its window asynchronously, after
+        // open() has already run its own order-front logic (or skipped it
+        // because the window didn't exist yet), so make sure it always ends
+        // up frontmost here too.
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func applyChrome(to window: NSWindow) {
@@ -114,7 +127,8 @@ final class SettingsSceneController {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
-        window.toolbarStyle = .unifiedCompact
+        window.toolbarStyle = .unified
+
     }
 
     // Cancel a restart that was scheduled after closing Settings.
