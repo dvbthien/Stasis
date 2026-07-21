@@ -110,6 +110,7 @@ final class SettingsSceneController {
         guard window !== settingsWindow else { return }
         removeWindowObservers()
         settingsWindow = window
+        window.identifier = NSUserInterfaceItemIdentifier("SettingsWindow")
         window.isRestorable = false
         applyChrome(to: window)
         observe(window)
@@ -152,7 +153,11 @@ final class SettingsSceneController {
             try? await Task.sleep(for: .milliseconds(100))
             guard !Task.isCancelled else { return }
 
-            self?.launchReplacementApp()
+            // Re-confirm the window is actually still closed — it may have
+            // been reopened during the delay above.
+            guard let self, self.settingsWindow == nil else { return }
+
+            self.launchReplacementApp()
             NSApp.terminate(nil)
         }
     }
